@@ -1,0 +1,12 @@
+For documentation see http://www.raijincl.org
+
+RaijinCL is a library for numerical computing in OpenCL, primarily focusing on BLAS.
+Author: Rahul Garg, PhD student at McGill University. Work done under supervision of Prof. Laurie Hendren.
+Written in C++. Essentially only depends on OpenCL.
+Licensed under Apache 2.0
+Currently focusing on Linux and tested on GPUs from AMD and Nvidia. 
+Let me know if you are interested in sponsoring a port for a particular hardware or OS. 
+ 
+
+
+
