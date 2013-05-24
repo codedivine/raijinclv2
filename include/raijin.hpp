@@ -241,6 +241,104 @@ cl_event transToImg<cl_double2>(RaijinTranspose *trans,
 void raijinTuneSgemm(cl_device_id dvc);
 void raijinTuneDgemm(cl_device_id dvc);
 
+template <typename T>
+class RaijinGemm{
+public:
+	static RaijinGemm<T> *getInstance(cl_context ctx,cl_device_id dvc);
+    cl_event apply(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+			T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
+			cl_mem B, cl_uint ldb, cl_uint offsetB,
+			T beta,
+			cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
+	~RaijinGemm();
+private:
+    RaijinTranspose *transObj;
+    RaijinScale *scaleObj;
+    RaijinCopy *copyObj;
+	RaijinGemm();
+	RaijinGemm(const RaijinGemm&);
+    cl_event applyGen(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+			T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
+			cl_mem B, cl_uint ldb, cl_uint offsetB,
+			T beta,
+			cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
+    cl_event applyOpt(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+			T alpha, cl_mem A, cl_uint lda,
+			cl_mem B, cl_uint ldb,
+			T beta,
+			cl_mem C, cl_uint ldc, RaijinParams params);
+	RaijinGemmOptKernel optkernel;
+	cl_context ctx;
+	cl_device_id dvc;
+	cl_kernel optcompiled;
+	cl_kernel gencompiled;
+	cl_program optprg;
+	cl_program genprg;
+};
+
+template <typename T>
+std::string getTypePrepend();
+
+template <>
+std::string getTypePrepend<cl_float>();
+
+template <>
+std::string getTypePrepend<cl_float2>();
+
+template <>
+std::string getTypePrepend<cl_double>();
+
+template <>
+std::string getTypePrepend<cl_double2>();
+
+template <typename T>
+RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context ctx,cl_device_id dvc){
+    string dpath = raijinGetProfileFileName(device,getTypePrepend<T>);
+	//cout<<"Filename "<<dpath<<endl;
+    string line;
+    ifstream ifile(dpath.c_str());
+	//cout<<"Opened file? "<<ifile.is_open()<<" Is Good? "<<ifile.good()<<endl;
+	RaijinGemmOptKernel opts;
+	bool foundProfile = false;
+    if(ifile.good() && ifile.is_open()) foundProfile = true;
+	if(foundProfile){
+		//cout<<"RaijinCL: Found the device profile"<<endl;
+		RaijinSgemm *sgemm = new RaijinSgemm;
+		sgemm->optkernel = opts;
+		sgemm->ctx = context;
+		clRetainContext(context);
+		sgemm->dvc = device;
+		cl_int errcode;
+		const size_t len = sgemm->optkernel.kernel.length();
+		const char *prgstr = sgemm->optkernel.kernel.c_str();
+		//cout<<"Kernel:"<<sgemm->optkernel.kernel<<endl;
+
+		//TODO: check that there were no errors
+		sgemm->optprg = clCreateProgramWithSource(sgemm->ctx, 1, &prgstr, &len, &errcode);
+		//cout<<"Create program from source "<<errcode<<endl;
+		cl_int bldcode = clBuildProgram(sgemm->optprg, 1, &(sgemm->dvc), "", NULL, NULL);
+		//cout<<"Build code "<<bldcode<<endl;
+		sgemm->optcompiled = clCreateKernel(sgemm->optprg, sgemm->optkernel.kname.c_str(), &errcode);
+
+		const char *genString = sgemmGenKernel.c_str();
+		const size_t genLength = sgemmGenKernel.length();
+		sgemm->genprg = clCreateProgramWithSource(sgemm->ctx, 1, &genString, &genLength, &errcode);
+        bldcode = clBuildProgram(sgemm->genprg, 1, &(sgemm->dvc), "-g", NULL, NULL);
+		sgemm->gencompiled = clCreateKernel(sgemm->genprg, "sgemmGen", &errcode);
+        sgemm->transObj = new RaijinTranspose(device,context);
+        sgemm->copyObj = new RaijinCopy(context,device);
+        sgemm->scaleObj = new RaijinScale(context,device);
+		return sgemm;
+	}else{
+		cout<<"Did not find the profile"<<endl;
+	}
+	return NULL;
+}
+	
+
+
+
+
 class RaijinSgemm{
 public:
 	static RaijinSgemm *getInstance(cl_context ctx,cl_device_id dvc);
