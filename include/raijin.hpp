@@ -21,6 +21,7 @@ extern "C"{
 #include <iostream>
 #include <istream>
 #include <ostream>
+#include <fstream>
 #include <vector>
 #include "rtimer.hpp"
 
@@ -240,172 +241,6 @@ cl_event transToImg<cl_double2>(RaijinTranspose *trans,
 
 void raijinTuneSgemm(cl_device_id dvc);
 void raijinTuneDgemm(cl_device_id dvc);
-
-template <typename T>
-class RaijinGemm{
-public:
-	static RaijinGemm<T> *getInstance(cl_context ctx,cl_device_id dvc);
-    cl_event apply(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
-			T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
-			cl_mem B, cl_uint ldb, cl_uint offsetB,
-			T beta,
-			cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
-	~RaijinGemm();
-private:
-    RaijinTranspose *transObj;
-    RaijinScale *scaleObj;
-    RaijinCopy *copyObj;
-	RaijinGemm();
-	RaijinGemm(const RaijinGemm&);
-    cl_event applyGen(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
-			T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
-			cl_mem B, cl_uint ldb, cl_uint offsetB,
-			T beta,
-			cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
-    cl_event applyOpt(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
-			T alpha, cl_mem A, cl_uint lda,
-			cl_mem B, cl_uint ldb,
-			T beta,
-			cl_mem C, cl_uint ldc, RaijinParams params);
-	RaijinGemmOptKernel optkernel;
-	cl_context ctx;
-	cl_device_id dvc;
-	cl_kernel optcompiled;
-	cl_kernel gencompiled;
-	cl_program optprg;
-	cl_program genprg;
-};
-
-template <typename T>
-std::string getTypePrepend();
-
-template <>
-std::string getTypePrepend<cl_float>();
-
-template <>
-std::string getTypePrepend<cl_float2>();
-
-template <>
-std::string getTypePrepend<cl_double>();
-
-template <>
-std::string getTypePrepend<cl_double2>();
-
-template <typename T>
-RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context ctx,cl_device_id dvc){
-    string dpath = raijinGetProfileFileName(device,getTypePrepend<T>);
-	//cout<<"Filename "<<dpath<<endl;
-    string line;
-    ifstream ifile(dpath.c_str());
-	//cout<<"Opened file? "<<ifile.is_open()<<" Is Good? "<<ifile.good()<<endl;
-	RaijinGemmOptKernel opts;
-	bool foundProfile = false;
-    if(ifile.good() && ifile.is_open()) foundProfile = true;
-	if(foundProfile){
-		//cout<<"RaijinCL: Found the device profile"<<endl;
-		RaijinSgemm *sgemm = new RaijinSgemm;
-		sgemm->optkernel = opts;
-		sgemm->ctx = context;
-		clRetainContext(context);
-		sgemm->dvc = device;
-		cl_int errcode;
-		const size_t len = sgemm->optkernel.kernel.length();
-		const char *prgstr = sgemm->optkernel.kernel.c_str();
-		//cout<<"Kernel:"<<sgemm->optkernel.kernel<<endl;
-
-		//TODO: check that there were no errors
-		sgemm->optprg = clCreateProgramWithSource(sgemm->ctx, 1, &prgstr, &len, &errcode);
-		//cout<<"Create program from source "<<errcode<<endl;
-		cl_int bldcode = clBuildProgram(sgemm->optprg, 1, &(sgemm->dvc), "", NULL, NULL);
-		//cout<<"Build code "<<bldcode<<endl;
-		sgemm->optcompiled = clCreateKernel(sgemm->optprg, sgemm->optkernel.kname.c_str(), &errcode);
-
-		const char *genString = sgemmGenKernel.c_str();
-		const size_t genLength = sgemmGenKernel.length();
-		sgemm->genprg = clCreateProgramWithSource(sgemm->ctx, 1, &genString, &genLength, &errcode);
-        bldcode = clBuildProgram(sgemm->genprg, 1, &(sgemm->dvc), "-g", NULL, NULL);
-		sgemm->gencompiled = clCreateKernel(sgemm->genprg, "sgemmGen", &errcode);
-        sgemm->transObj = new RaijinTranspose(device,context);
-        sgemm->copyObj = new RaijinCopy(context,device);
-        sgemm->scaleObj = new RaijinScale(context,device);
-		return sgemm;
-	}else{
-		cout<<"Did not find the profile"<<endl;
-	}
-	return NULL;
-}
-	
-
-
-
-
-class RaijinSgemm{
-public:
-	static RaijinSgemm *getInstance(cl_context ctx,cl_device_id dvc);
-    cl_event apply(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
-			cl_float alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
-			cl_mem B, cl_uint ldb, cl_uint offsetB,
-			cl_float beta,
-			cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
-	~RaijinSgemm();
-private:
-    RaijinTranspose *transObj;
-    RaijinScale *scaleObj;
-    RaijinCopy *copyObj;
-	RaijinSgemm();
-	RaijinSgemm(const RaijinSgemm&);
-    cl_event applyGen(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
-			cl_float alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
-			cl_mem B, cl_uint ldb, cl_uint offsetB,
-			cl_float beta,
-			cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
-    cl_event applyOpt(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
-			cl_float alpha, cl_mem A, cl_uint lda,
-			cl_mem B, cl_uint ldb,
-			cl_float beta,
-			cl_mem C, cl_uint ldc, RaijinParams params);
-	RaijinGemmOptKernel optkernel;
-	cl_context ctx;
-	cl_device_id dvc;
-	cl_kernel optcompiled;
-	cl_kernel gencompiled;
-	cl_program optprg;
-	cl_program genprg;
-};
-
-class RaijinDgemm{
-public:
-	static RaijinDgemm *getInstance(cl_context ctx,cl_device_id dvc);
-    cl_event apply(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
-			cl_double alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
-			cl_mem B, cl_uint ldb, cl_uint offsetB,
-			cl_double beta,
-			cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
-	~RaijinDgemm();
-private:
-	RaijinDgemm();
-	RaijinDgemm(const RaijinDgemm& );
-    cl_event applyOpt(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
-			cl_double alpha, cl_mem A, cl_uint lda,
-			cl_mem B, cl_uint ldb,
-			cl_double beta,
-			cl_mem C, cl_uint ldc, RaijinParams params);
-    cl_event applyGen(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
-			cl_double alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
-			cl_mem B, cl_uint ldb, cl_uint offsetB,
-			cl_double beta,
-			cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
-    RaijinTranspose *transObj;
-    RaijinScale *scaleObj;
-    RaijinCopy *copyObj;
-	RaijinGemmOptKernel optkernel;
-	cl_context ctx;
-	cl_device_id dvc;
-	cl_kernel optcompiled;
-	cl_kernel gencompiled;
-	cl_program optprg;
-	cl_program genprg;
-};
 
 
 extern void writeResults(std::string fname,cl_device_id dvc,std::string& prgmsource,std::string& prgmname,int tsizes[],int lsizes[],bool transA,bool transB);
@@ -882,6 +717,271 @@ cl_event raijinApplyOpt(cl_kernel krnl,
     return evt;
 
 }
+
+template <typename T>
+class RaijinGemm{
+public:
+    static RaijinGemm<T> *getInstance(cl_context ctx,cl_device_id dvc);
+    cl_event apply(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+            T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
+            cl_mem B, cl_uint ldb, cl_uint offsetB,
+            T beta,
+            cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
+    ~RaijinGemm();
+private:
+    RaijinTranspose *transObj;
+    RaijinScale *scaleObj;
+    RaijinCopy *copyObj;
+    RaijinGemm();
+    RaijinGemm(const RaijinGemm&);
+    cl_event applyGen(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+            T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
+            cl_mem B, cl_uint ldb, cl_uint offsetB,
+            T beta,
+            cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
+    cl_event applyOpt(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+            T alpha, cl_mem A, cl_uint lda,
+            cl_mem B, cl_uint ldb,
+            T beta,
+            cl_mem C, cl_uint ldc, RaijinParams params);
+    RaijinGemmOptKernel optkernel;
+    cl_context ctx;
+    cl_device_id dvc;
+    cl_kernel optcompiled;
+    cl_kernel gencompiled;
+    cl_program optprg;
+    cl_program genprg;
+};
+
+template <typename T>
+std::string getGemmname();
+
+template <>
+std::string getGemmname<cl_float>();
+
+template <>
+std::string getGemmname<cl_float2>();
+
+template <>
+std::string getGemmname<cl_double>();
+
+template <>
+std::string getGemmname<cl_double2>();
+
+template <typename T>
+std::string getGenGemmKernel();
+
+template <>
+std::string getGenGemmKernel<cl_float>();
+
+template <>
+std::string getGenGemmKernel<cl_float2>();
+
+template <>
+std::string getGenGemmKernel<cl_double>();
+
+template <>
+std::string getGenGemmKernel<cl_double2>();
+
+template <typename T>
+RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context context,cl_device_id device){
+    std::string dpath = raijinGetProfileFileName(device,getGemmname<T>());
+    //cout<<"Filename "<<dpath<<endl;
+    std::string line;
+    std::ifstream ifile(dpath.c_str());
+    //cout<<"Opened file? "<<ifile.is_open()<<" Is Good? "<<ifile.good()<<endl;
+    RaijinGemmOptKernel opts;
+    bool foundProfile = false;
+    if(ifile.good() && ifile.is_open()) foundProfile = true;
+    if(foundProfile){
+        //cout<<"RaijinCL: Found the device profile"<<endl;
+        RaijinGemm<T> *gemm = new RaijinGemm<T>;
+        gemm->optkernel = opts;
+        gemm->ctx = context;
+        clRetainContext(context);
+        gemm->dvc = device;
+        cl_int errcode;
+        const size_t len = gemm->optkernel.kernel.length();
+        const char *prgstr = gemm->optkernel.kernel.c_str();
+        //cout<<"Kernel:"<<sgemm->optkernel.kernel<<endl;
+
+        //TODO: check that there were no errors
+        gemm->optprg = clCreateProgramWithSource(gemm->ctx, 1, &prgstr, &len, &errcode);
+        //cout<<"Create program from source "<<errcode<<endl;
+        cl_int bldcode = clBuildProgram(gemm->optprg, 1, &(gemm->dvc), "", NULL, NULL);
+        //cout<<"Build code "<<bldcode<<endl;
+        gemm->optcompiled = clCreateKernel(gemm->optprg, gemm->optkernel.kname.c_str(), &errcode);
+        std::string genKernel = getGenGemmKernel<T>();
+        const char *genString = genKernel.c_str();
+        const size_t genLength = genKernel.length();
+        gemm->genprg = clCreateProgramWithSource(gemm->ctx, 1, &genString, &genLength, &errcode);
+        bldcode = clBuildProgram(gemm->genprg, 1, &(gemm->dvc), "", NULL, NULL);
+        gemm->gencompiled = clCreateKernel(gemm->genprg, "sgemmGen", &errcode);
+        gemm->transObj = new RaijinTranspose(device,context);
+        gemm->copyObj = new RaijinCopy(context,device);
+        gemm->scaleObj = new RaijinScale(context,device);
+        return gemm;
+    }else{
+        std::cout<<"Did not find the profile"<<std::endl;
+    }
+    return NULL;
+}
+
+template <typename T>
+cl_event RaijinGemm<T>::applyGen(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+        T alpha, cl_mem A, cl_uint lda, unsigned int offsetA,
+        cl_mem B, cl_uint ldb, unsigned int offsetB,
+        T beta,
+        cl_mem C, cl_uint ldc, unsigned int offsetC, RaijinParams params){
+    //cout<<"Entering applyGen "<<M<<" "<<N<<" "<<K<<endl;
+    const size_t elemsize = sizeof(T);
+    cl_kernel krnl = gencompiled;
+    cl_int kcode0, kcode1, kcode2, kcode3, kcode4, kcode5, kcode6, kcode7,kcode8,kcode9,kcode10,kcode11;
+    kcode0 = clSetKernelArg(krnl, 0, sizeof(cl_uint), &K);
+    kcode1 = clSetKernelArg(krnl, 1, elemsize, &alpha);
+    kcode2 = clSetKernelArg(krnl, 2, sizeof(cl_mem), &A);
+    kcode3 = clSetKernelArg(krnl, 3, sizeof(cl_uint), &lda);
+    kcode4 = clSetKernelArg(krnl, 4, sizeof(cl_uint), &offsetA);
+    kcode5 = clSetKernelArg(krnl, 5, sizeof(cl_mem), &B);
+    kcode6 = clSetKernelArg(krnl, 6, sizeof(cl_uint), &ldb);
+    kcode7 = clSetKernelArg(krnl, 7, sizeof(cl_uint), &offsetB);
+    kcode8 = clSetKernelArg(krnl, 8, elemsize, &beta);
+    kcode9 = clSetKernelArg(krnl, 9, sizeof(cl_mem), &C);
+    kcode10 = clSetKernelArg(krnl, 10, sizeof(cl_uint), &ldc);
+    kcode11 = clSetKernelArg(krnl, 11, sizeof(cl_uint), &offsetC);
+    //cout<<kcode0<<" "<<kcode1<<" "<<kcode2<<" "<<kcode3<<" "<<kcode4<<" "<<kcode5<<" "<<kcode6<<" "<<kcode7<<" "<<kcode8<<" "<<kcode9<<" "<<kcode10<<
+    //		" "<<kcode11<<endl;
+    size_t gsize[2], lsize[2];
+    gsize[1] = M;
+    gsize[0] = N ;
+    cl_event evt;
+    cl_event *waitList = (params.num_events>0) ? params.waitEvents : NULL;
+    cl_int errcode = clEnqueueNDRangeKernel(params.queue, krnl, 2, NULL, gsize, NULL, params.num_events, waitList, &evt);
+    //cout<<"Was CL_SUCCESS? "<<(errcode==CL_SUCCESS)<<" "<<errcode<<endl;
+    return evt;
+}
+
+template <typename T>
+cl_event RaijinGemm<T>::apply(enum RAIJIN_ORDER order, bool transA, bool transB,  cl_uint M, cl_uint N, cl_uint K,
+        T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
+        cl_mem B, cl_uint ldb, cl_uint offsetB,
+        T beta,
+        cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params){
+    //cout<<"Entering apply"<<endl;
+    const int elemsize = sizeof(T);
+    if(order==RaijinColMajor){
+        //untested
+        return apply(RaijinRowMajor,transA,transB,N,M,K,alpha,B,ldb,offsetB,A,lda,offsetA,beta,C,ldc,offsetC,params);
+    }
+
+
+    cl_mem optA,optB,optC;
+    int optM,optN,optK;
+    optM = M - M%(optkernel.htile*optkernel.lsizex);
+    optK = K - K%(optkernel.ktile);
+    optN = N - N%(optkernel.wtile*optkernel.lsizey);
+    //cout<<optM<<" "<<optN<<" "<<optK<<" "<<optkernel.ktile<<endl;
+    cl_int errcode;
+    RaijinParams temp;
+    temp.queue = params.queue;
+    temp.waitEvents = new cl_event[params.num_events+4];
+    temp.num_events = params.num_events;
+    for(int i=0;i<params.num_events;i++) temp.waitEvents[i] = params.waitEvents[i];
+    if(optM>0 && optN>0 && optK>0){
+        if(offsetA>0){
+            cl_buffer_region regA;
+            regA.origin = offsetA;
+            regA.size = optM*lda*elemsize;
+            optA = clCreateSubBuffer(A,0,CL_BUFFER_CREATE_TYPE_REGION,(const void*)&regA,&errcode);
+        }else{
+            optA = A;
+        }
+        if(offsetB>0){
+            cl_buffer_region regB;
+            regB.origin = offsetB;
+            regB.size = optK*ldb*elemsize;
+            optB = clCreateSubBuffer(B,0,CL_BUFFER_CREATE_TYPE_REGION,(const void*)&regB,&errcode);
+        }else{
+            optB = B;
+        }
+        if(offsetC>0){
+            cl_buffer_region regC;
+            regC.origin = offsetC;
+            regC.size = optM*ldc*elemsize;
+            optC = clCreateSubBuffer(C,0,CL_BUFFER_CREATE_TYPE_REGION,(const void*)&regC,&errcode);
+        }else{
+            optC = C;
+        }
+
+        cl_event evt = applyOpt(order,transA,transB,optM,optN,optK,alpha,optA,lda,optB,ldb,beta,optC,ldc,temp);
+        if(offsetA>0) clReleaseMemObject(optA);
+        if(offsetB>0) clReleaseMemObject(optB);
+        if(offsetC>0) clReleaseMemObject(optC);
+        temp.waitEvents[temp.num_events] = evt;
+        temp.num_events++;
+    }
+
+    //calculate remaining summations for optM*optN portion of C
+    if(K>optK){
+        //cout<<"Remaining K"<<endl;
+        int remK = K - optK;
+        cl_event evt = applyGen(order,transA,transB,optM,optN,remK,alpha,A,lda, offsetA+optK, B,ldb,offsetB+optK*ldb, beta, C,ldc,offsetC, temp);
+        temp.waitEvents[temp.num_events] = evt;
+        temp.num_events++;
+    }
+
+    //Calculate the (M-optM) remaining rows of C
+    if(M>optM){
+        //cout<<"Remaining M"<<endl;
+        int remM = M- optM;
+        cl_event evt = applyGen(order,transA,transB,remM,N,K,alpha, A,lda, offsetA+optM*lda, B,ldb,offsetB, beta, C,ldc,offsetC+optM*ldc, temp);
+        temp.waitEvents[temp.num_events] = evt;
+        temp.num_events++;
+    }
+
+    if(N>optN){
+        //cout<<"Remaining N"<<endl;
+        int remN = N- optN;
+        cl_event evt = applyGen(order,transA,transB, M,remN,K,alpha, A,lda, offsetA, B,ldb,offsetB+optN, beta, C,ldc,offsetC+optN, temp);
+        temp.waitEvents[temp.num_events] = evt;
+        temp.num_events++;
+    }
+    cl_event lastEvt = temp.waitEvents[temp.num_events-1];
+    delete[] temp.waitEvents;
+    return lastEvt;
+}
+
+template <typename T>
+RaijinGemm<T>::RaijinGemm(){
+}
+
+template <typename T>
+RaijinGemm<T>::~RaijinGemm(){
+    delete transObj;
+    delete copyObj;
+    delete scaleObj;
+    clReleaseKernel(optcompiled);
+    clReleaseKernel(gencompiled);
+    clReleaseProgram(optprg);
+    clReleaseProgram(genprg);
+    clReleaseContext(ctx);
+}
+
+template <typename T>
+cl_event RaijinGemm<T>::applyOpt(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+        T alpha, cl_mem A, cl_uint lda,
+        cl_mem B, cl_uint ldb,
+        T beta,
+        cl_mem C, cl_uint ldc, RaijinParams params){
+    //cout<<"Entering applyOpt "<<M<<" "<<N<<" "<<K<<endl;
+    return raijinApplyOpt<T>(optcompiled,optkernel,ctx,dvc,
+                          order,transA,transB,M,N,K,alpha,A,lda,B,ldb,beta,C,ldc,params,transObj,copyObj,scaleObj);
+
+}
+
+typedef RaijinGemm<cl_float> RaijinSgemm;
+typedef RaijinGemm<cl_double> RaijinDgemm;
+
 
 bool supportsFp64(cl_device_id dvc);
 
