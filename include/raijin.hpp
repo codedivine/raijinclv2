@@ -816,7 +816,8 @@ RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context context,cl_device_id device
         const size_t genLength = genKernel.length();
         gemm->genprg = clCreateProgramWithSource(gemm->ctx, 1, &genString, &genLength, &errcode);
         bldcode = clBuildProgram(gemm->genprg, 1, &(gemm->dvc), "", NULL, NULL);
-        gemm->gencompiled = clCreateKernel(gemm->genprg, "sgemmGen", &errcode);
+        std::string kname = getGemmname<T>();
+        gemm->gencompiled = clCreateKernel(gemm->genprg, kname.c_str() , &errcode);
         gemm->transObj = new RaijinTranspose(device,context);
         gemm->copyObj = new RaijinCopy(context,device);
         gemm->scaleObj = new RaijinScale(context,device);

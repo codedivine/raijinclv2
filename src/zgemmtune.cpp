@@ -311,10 +311,10 @@ static bool genCkernelNTCons(int lsizex, int lsizey, int htile, int wtile, int k
     ss<<"const unsigned int lidy = get_local_id(0);"<<endl;
     ss<<"unsigned int k;"<<endl;
     if(storea){
-        ss<<"__local "<<dtype<<simdwidth<<" ldsA["<<(htile*lsizex)<<"]["<<((ktile/simdwidth)+padding)<<"];"<<endl;
+        ss<<"__local "<<dtype<<(simdwidth*2)<<" ldsA["<<(htile*lsizex)<<"]["<<((ktile/simdwidth)+padding)<<"];"<<endl;
     }
     if(storeb){
-        ss<<"__local "<<dtype<<simdwidth<<" ldsB["<<(wtile*lsizey)<<"]["<<((ktile/simdwidth)+padding)<<"];"<<endl;
+        ss<<"__local "<<dtype<<(simdwidth*2)<<" ldsB["<<(wtile*lsizey)<<"]["<<((ktile/simdwidth)+padding)<<"];"<<endl;
     }
     for(int x=0;x<htile;x++){
         for(int y=0;y<wtile;y++){
@@ -1438,12 +1438,12 @@ static void tuneGemmComplex(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel
     bool imgB[] = {true,false};
     for (int i = 0; i < 6; i++) {
         for (int j = 0; j < 4; j++) {
-            for (int simdidx = 0; simdidx < 2;simdidx++) {
+            for (int simdidx = 1; simdidx < 2;simdidx++) {
                 for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
-                    for(int sa = 0 ; sa<2; sa++){
-                        for(int sb = 0; sb <2 ; sb++){
-                            for(int imgAidx=0;imgAidx<2;imgAidx++){
-                                for(int imgBidx=0;imgBidx<2;imgBidx++){
+                    for(int sa = 1 ; sa<2; sa++){
+                        for(int sb = 1; sb <2 ; sb++){
+                            for(int imgAidx=1;imgAidx<2;imgAidx++){
+                                for(int imgBidx=1;imgBidx<2;imgBidx++){
 
                                     //if(T::isDouble() && simdidx>0) continue;
 
@@ -1457,8 +1457,8 @@ static void tuneGemmComplex(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel
                                     int wtile = wtiles[i];
                                     bool useImageA = imgA[imgAidx];
                                     bool useImageB = imgB[imgBidx];
-                                    bool transA = false;
-                                    bool transB = true;
+                                    bool transA = true;
+                                    bool transB = false;
                                     if(dvctype!=CL_DEVICE_TYPE_GPU && (useImageA || useImageB)) continue;
                                     if(ltype!=CL_LOCAL && (storeA[sa] || storeB[sb])) continue;
 
@@ -1479,7 +1479,7 @@ static void tuneGemmComplex(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel
                                     unsigned int nVecRegs = htile*wtile;
                                     nVecRegs += (htile>wtile) ? (wtile/simd) : (htile/simd);
                                     //if(dvctype==CL_DEVICE_TYPE_CPU && nVecRegs>16) continue;
-                                    bool kernSuc = genCkernelNTCons(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(ctype))
+                                    bool kernSuc = genCkernelTNOff(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(ctype))
                                         ,1,body,useImageA,useImageB);
 
                                     /*unsigned int nVecRegs = htile*wtile/simd;

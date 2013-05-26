@@ -195,21 +195,10 @@ std::string RaijinCL::getGemmname<cl_float>(){
     return "sgemm";
 }
 
-template <>
-std::string RaijinCL::getGemmname<cl_float2>(){
-    return "cgemm";
-
-}
 
 template <>
 std::string RaijinCL::getGemmname<cl_double>(){
     return "dgemm";
-
-}
-
-template <>
-std::string RaijinCL::getGemmname<cl_double2>(){
-    return "zgemm";
 }
 
 template <>
