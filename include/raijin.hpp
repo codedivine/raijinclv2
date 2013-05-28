@@ -840,12 +840,41 @@ cl_event RaijinGemm<T>::applyGen(enum RAIJIN_ORDER order, bool transA, bool tran
     cl_int kcode0, kcode1, kcode2, kcode3, kcode4, kcode5, kcode6, kcode7,kcode8,kcode9,kcode10,kcode11;
     kcode0 = clSetKernelArg(krnl, 0, sizeof(cl_uint), &K);
     kcode1 = clSetKernelArg(krnl, 1, elemsize, &alpha);
-    kcode2 = clSetKernelArg(krnl, 2, sizeof(cl_mem), &A);
+    cl_mem opA = A;
+    cl_event transEvtA,transEvtB;
+    if(transA){
+        //cl_event transToBuf(RaijinTranspose *trans,
+        //                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+       opA = clCreateBuffer(ctx,CL_MEM_READ_WRITE,sizeof(M*K*sizeof(T)),NULL,NULL);
+       cl_buffer_region region;
+       region.origin = offsetA;
+       region.size = ((K-1)*lda + M)*sizeof(T);
+       cl_mem subBufferA = clCreateSubBuffer(A,CL_MEM_READ_ONLY,CL_BUFFER_CREATE_TYPE_REGION,&region,NULL);
+       transEvtA = transToBuf<T>(transObj,params,subBufferA,opA,0,K,0,M,lda);
+       lda = K;
+       params.num_events = 1;
+       params.waitEvents = &transEvtA;
+    }
+
+    cl_mem opB = B;
+    if(transB){
+        /*B is transposed. We want to convert it to a matrix of shape K*N */
+        opB = clCreateBuffer(ctx,CL_MEM_READ_WRITE,sizeof(K*N*sizeof(T)),NULL,NULL);
+        cl_buffer_region region;
+        region.origin = offsetB;
+        region.size = ((N-1)*lda + K)*sizeof(T);
+        cl_mem subBufferB = clCreateSubBuffer(B,CL_MEM_READ_ONLY,CL_BUFFER_CREATE_TYPE_REGION,&region,NULL);
+        transEvtB = transToBuf<T>(transObj,params,subBufferB,opB,0,N,0,K,ldb);
+        ldb = K;
+        params.num_events = 1;
+        params.waitEvents = &transEvtB;
+    }
+    kcode2 = clSetKernelArg(krnl, 2, sizeof(cl_mem), &opA);
     kcode3 = clSetKernelArg(krnl, 3, sizeof(cl_uint), &lda);
     kcode4 = clSetKernelArg(krnl, 4, sizeof(cl_uint), &offsetA);
     kcode5 = clSetKernelArg(krnl, 5, sizeof(cl_mem), &B);
     kcode6 = clSetKernelArg(krnl, 6, sizeof(cl_uint), &ldb);
-    kcode7 = clSetKernelArg(krnl, 7, sizeof(cl_uint), &offsetB);
+    kcode7 = clSetKernelArg(krnl, 7, sizeof(cl_uint), &opB);
     kcode8 = clSetKernelArg(krnl, 8, elemsize, &beta);
     kcode9 = clSetKernelArg(krnl, 9, sizeof(cl_mem), &C);
     kcode10 = clSetKernelArg(krnl, 10, sizeof(cl_uint), &ldc);
