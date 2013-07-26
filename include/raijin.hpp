@@ -500,6 +500,7 @@ bool raijinGemmExecCopy(RaijinGemmPlan *plan,
                     if(plan->optparams.imageA){
                         evt = transToImg<T>(transObj,rptemp,bufA,Anew,simd,startRow,endRow,startCol,endCol,lda);
                     }else{
+						//std::cout<<"raijinExecGemmCopy: Dispatching A trans to buf "<<startRow<<" "<<" "<<endRow<<" "<<startCol<<" "<<endCol<<std::endl;
                         evt = transToBuf<T>(transObj,rptemp,bufA,Anew,simd,startRow,endRow,startCol,endCol,lda);
                     }
 
@@ -611,12 +612,14 @@ cl_event raijinApplyOpt(cl_kernel krnl,
     const size_t elemsize = sizeof(T);
     cl_device_type dvctype;
     clGetDeviceInfo(dvc,CL_DEVICE_TYPE,sizeof(dvctype),&dvctype,NULL);
-    const int msize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024:2048;
+    const int msize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024:8192;
 
     if(params.num_events==0) params.waitEvents = NULL;
-    cl_event scaleEvt = raijinScale<T>(scaleObj,params,C,M,N,ldc,beta);
-    RaijinGemmPlan *plan = raijinGetGemmPlan<T>(optparams,ctx,dvc,order,transA,transB,M,N,K,lda,ldb,msize);
+    
+	//cl_event scaleEvt = raijinScale<T>(scaleObj,params,C,M,N,ldc,beta);
 
+
+    /*RaijinGemmPlan *plan = raijinGetGemmPlan<T>(optparams,ctx,dvc,order,transA,transB,M,N,K,lda,ldb,msize);
     cl_event copyEvt=NULL;
     RaijinParams copyParams;
     copyParams.num_events = 1;
@@ -640,7 +643,30 @@ cl_event raijinApplyOpt(cl_kernel krnl,
         waitList = &copyEvt;
     }
     cl_uint numEvents = 1;
-    cl_uint curEventIndex = 0;
+    cl_uint curEventIndex = 0;*/
+
+	RaijinGemmPlan *plan = raijinGetGemmPlan<T>(optparams,ctx,dvc,order,transA,transB,M,N,K,lda,ldb,msize);
+    cl_event copyEvt=NULL;
+    raijinGemmExecCopy<T>(plan,params,A,B,C,ldc,true,true,&copyEvt,transObj,copyObj,scaleObj);
+
+    const int imax = plan->tiles.ivals.size()-1;
+    const int jmax = plan->tiles.jvals.size()-1;
+    const int kmax = plan->tiles.kvals.size()-1;
+
+
+	cl_uint numEvents = 0;
+	cl_uint curEventIndex = 0;
+    std::vector<cl_event> events(imax*jmax*kmax);
+    cl_event *waitList = NULL;
+	/*if(copyEvt!=NULL){
+        //cout<<"raijinApplyOpt: Waitliset set to copy"<<endl;
+        waitList = &copyEvt;
+		numEvents = 1;
+		curEventIndex = 0;
+    }else{
+		waitList = params.waitEvents;
+		numEvents = params.num_events;
+	}*/
 
     for(int i=0;i<imax;i++){
         for(int j=0;j<jmax;j++){
@@ -663,7 +689,10 @@ cl_event raijinApplyOpt(cl_kernel krnl,
                 cl_int kcode0, kcode1, kcode2, kcode3, kcode4, kcode5, kcode6, kcode7,kcode8;
                 const cl_uint Kd = plan->tiles.kvals[k+1]-plan->tiles.kvals[k];
                 int prevEventIndex = curEventIndex-1;
-                if(curEventIndex>0) waitList = &events[prevEventIndex];
+				if(curEventIndex>0){
+					waitList = &events[prevEventIndex];
+					numEvents = 1;
+				}
                 //cout<<"applyOpt: "<<Mnew<<" "<<Nnew<<" "<<Kd<<endl;
                 const cl_mem Anew = plan->abufs.memobj[i*kmax+k];
                 const cl_mem Bnew = plan->bbufs.memobj[k*jmax+j];
@@ -675,24 +704,34 @@ cl_event raijinApplyOpt(cl_kernel krnl,
                 kcode0 = clSetKernelArg(krnl, 0, sizeof(cl_mem), &Anew);
                 kcode1 = clSetKernelArg(krnl, 1, sizeof(cl_mem), &Bnew);
                 kcode2 = clSetKernelArg(krnl, 2, sizeof(cl_mem), &Cnew);
-                if(!optparams.transA){
-                    kcode3 = clSetKernelArg(krnl, 3, sizeof(cl_uint), &Kd);
-                }else{
-                    kcode3 = clSetKernelArg(krnl,3,sizeof(cl_uint),&Mnew);
-                }
+				if(plan->abufs.isAllocated[i*kmax+k]){
+					if(!optparams.transA){
+						kcode3 = clSetKernelArg(krnl, 3, sizeof(cl_uint), &Kd);
+					}else{
+						kcode3 = clSetKernelArg(krnl,3,sizeof(cl_uint),&Mnew);
+					}
+				}else{
+					//cout<<"Setting lda to "<<lda<<endl;
+					kcode3 = clSetKernelArg(krnl,3,sizeof(cl_uint),&lda);
+				}
 
-                if(!optparams.transB){
-                    kcode4 = clSetKernelArg(krnl, 4, sizeof(cl_uint), &Nnew);
-                }else{
-                    kcode4 = clSetKernelArg(krnl, 4, sizeof(cl_uint), &Kd);
-                }
+				if(plan->bbufs.isAllocated[k*jmax+j]){
+					if(!optparams.transB){
+						kcode4 = clSetKernelArg(krnl, 4, sizeof(cl_uint), &Nnew);
+					}else{
+						kcode4 = clSetKernelArg(krnl, 4, sizeof(cl_uint), &Kd);
+					}
+				}else{
+					//cout<<"Setting ldb to "<<ldb<<endl;
+					kcode4 = clSetKernelArg(krnl,4,sizeof(cl_uint),&ldb);
+				}
 
                 kcode5 = clSetKernelArg(krnl, 5, sizeof(cl_uint), &ldc);
                 kcode6 = clSetKernelArg(krnl, 6, sizeof(cl_uint), &Kd);
                 kcode7 = clSetKernelArg(krnl, 7, elemsize, &alpha);
                 T newbeta = raijinGetOne<T>();
                 //if(k==0) newbeta = beta;
-                kcode8 = clSetKernelArg(krnl, 8, elemsize, &newbeta);
+                kcode8 = clSetKernelArg(krnl, 8, elemsize, &beta);
                 //cout<<"Dispatching "<<gsize[1]<<" "<<gsize[0]<<" "<<lsize[1]<<" "<<lsize[0]<<endl;
                 cl_int errcode = clEnqueueNDRangeKernel(params.queue, krnl, 2,NULL, gsize, lsize,numEvents, waitList, &events[curEventIndex]);
 				if(errcode!=CL_SUCCESS){
@@ -706,13 +745,13 @@ cl_event raijinApplyOpt(cl_kernel krnl,
             //cout<<curEventIndex<<endl;
             cl_mem *Cnewcopy = new cl_mem;
             *Cnewcopy = Cnew;
-            clSetEventCallback(events[curEventIndex-1],CL_COMPLETE,releaseMemObject,(void *)Cnewcopy);
+            //clSetEventCallback(events[curEventIndex-1],CL_COMPLETE,releaseMemObject,(void *)Cnewcopy);
             //clReleaseMemObject(Cnew);
         }
     }
     //cout<<"Finished dispatch"<<endl;
     cl_event evt = events[imax*jmax*kmax-1];
-    clSetEventCallback(evt,CL_COMPLETE,RaijinGemmPlan::deleteGemmPlan,(void*)plan);
+    //clSetEventCallback(evt,CL_COMPLETE,RaijinGemmPlan::deleteGemmPlan,(void*)plan);
     //cout<<"Was CL_SUCCESS? "<<(errcode==CL_SUCCESS)<<" "<<errcode<<endl;
     return evt;
 
@@ -786,24 +825,24 @@ std::string getGenGemmKernel<cl_double2>();
 template <typename T>
 RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context context,cl_device_id device){
     std::string dpath = raijinGetProfileFileName(device,getGemmname<T>());
-    //cout<<"Filename "<<dpath<<endl;
+    cout<<"Filename "<<dpath<<endl;
     std::string line;
     std::ifstream ifile(dpath.c_str());
-    //cout<<"Opened file? "<<ifile.is_open()<<" Is Good? "<<ifile.good()<<endl;
+    cout<<"Opened file? "<<ifile.is_open()<<" Is Good? "<<ifile.good()<<endl;
     RaijinGemmOptKernel opts;
     bool foundProfile = false;
     if(ifile.good() && ifile.is_open()) foundProfile = true;
     if(foundProfile){
-        //cout<<"RaijinCL: Found the device profile"<<endl;
+        cout<<"RaijinCL: Found the device profile"<<endl;
         RaijinGemm<T> *gemm = new RaijinGemm<T>;
-        gemm->optkernel = opts;
+		ifile>>gemm->optkernel;
         gemm->ctx = context;
         clRetainContext(context);
         gemm->dvc = device;
         cl_int errcode;
         const size_t len = gemm->optkernel.kernel.length();
         const char *prgstr = gemm->optkernel.kernel.c_str();
-        //cout<<"Kernel:"<<sgemm->optkernel.kernel<<endl;
+        //cout<<"Kernel:"<<gemm->optkernel.kernel<<endl;
 
         //TODO: check that there were no errors
         gemm->optprg = clCreateProgramWithSource(gemm->ctx, 1, &prgstr, &len, &errcode);
@@ -995,6 +1034,7 @@ RaijinGemm<T>::~RaijinGemm(){
     clReleaseProgram(optprg);
     clReleaseProgram(genprg);
     clReleaseContext(ctx);
+	
 }
 
 template <typename T>

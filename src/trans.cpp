@@ -783,7 +783,7 @@ static cl_kernel getScaleKernel(cl_context ctx,cl_device_id dvc,bool isDouble,bo
 }
 
 RaijinScale::RaijinScale(cl_context context, cl_device_id device):ctx(context),dvc(device){
-    clRetainContext(ctx);
+    //clRetainContext(ctx);
     skrnl = getScaleKernel(ctx,dvc,false,false);
     ckrnl = getScaleKernel(ctx,dvc,false,true);
     if(supportsFp64(dvc)){
