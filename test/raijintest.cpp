@@ -380,6 +380,7 @@ void testPartSgemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	cl_int errcode;
 
 	cl_context ctx = clCreateContext(conprop,1,&dvc,NULL,NULL,&errcode);
+	cout<<"Created context? "<<errcode<<endl;
 	cl_command_queue q = clCreateCommandQueue(ctx,dvc,0,&errcode);
 	cl_mem bufA, bufB, bufC;
 	const int sizeA = sizeof(float)*M*K;

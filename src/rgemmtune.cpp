@@ -106,12 +106,35 @@ bool genKernelTNOff(int lsizex,
     ss<<"for(k=0;k<K;k+=ktile){"<<endl;
     if(storea){
         ss<<"const int gstartxA = get_group_id(1)*(htile/simdwidth)*lx;\n";
+		 for(int y=0;y<(ktile/lsizex);y++){
+            for(int x=0;x<((htile*lsizex)/(simdwidth*lsizey));x++){
+				if(useImageA){
+					ss<<"int2 a"<<y<<"_"<<x<<"addr = (int2)(lidy+"<<x<<"*ly+gstartxA,k+"<<y<<"*lx + lidx );"<<endl;
+				}else{
+					ss<<"int a"<<y<<"_"<<x<<"addr = (k+"<<y<<"*lx+lidx)*(lda/simdwidth)+ gstartxA + lidy + "<<x<<"*ly;"<<endl;
+				}
+			}
+		 }
+	} 
+	if(storeb){
+		ss<<"const int gstartxB = get_group_id(0)*(wtile/simdwidth)*ly;\n";
+		for(int y=0;y<(ktile/lsizex);y++){
+			for(int x=0;x<((wtile*lsizey)/(simdwidth*lsizey));x++){
+				if(useImageB){
+					ss<<"int2 b"<<y<<"_"<<x<<"addr = (int2)(lidy + "<<x<<"*ly+gstartxB,k+"<<y<<"*lx +lidx);"<<endl;
+				}else{
+					ss<<"int b"<<y<<"_"<<x<<"addr = (k+"<<y<<"*lx+lidx)*(ldb/simdwidth)+ gstartxB + lidy + "<<x<<"*ly;"<<endl;
+				}
+			}
+		}
+	}
+	if(storea){
         for(int y=0;y<(ktile/lsizex);y++){
             for(int x=0;x<((htile*lsizex)/(simdwidth*lsizey));x++){
                 ss<<" ldsA["<<y<<"*lx + lidx]["<<x<<"*ly + lidy] = ";
                 if(useImageA){
                     if(isDouble){
-                        ss<<"as_double2(read_imagei(A,sampler,(int2)(lidy+"<<x<<"*ly+gstartxA,k+"<<y<<"*lx + lidx )))";
+                        ss<<"as_double2(read_imagei(A,sampler,a"<<y<<"_"<<x<<"addr))";
                     }else{
                         ss<<"(myread_imagef(A,(int2)(lidy+"<<x<<"*ly+gstartxA,k+"<<y<<"*lx + lidx)))";
                     }
@@ -121,19 +144,18 @@ bool genKernelTNOff(int lsizex,
 #endif
                     ss<<";\n";
                 }else{
-                    ss<<"A[(k+"<<y<<"*lx+lidx)*(lda/simdwidth)+ gstartxA + lidy + "<<x<<"*ly];\n";
+                    ss<<"A[a"<<y<<"_"<<x<<"addr];\n";
                 }
             }
         }
     }
-    if(storeb){
-        ss<<"const int gstartxB = get_group_id(0)*(wtile/simdwidth)*ly;\n";
+	if(storeb){
         for(int y=0;y<(ktile/lsizex);y++){
             for(int x=0;x<((wtile*lsizey)/(simdwidth*lsizey));x++){
                 ss<<" ldsB["<<y<<"*lx + lidx]["<<x<<"*ly + lidy] = ";
                 if(useImageB){
                     if(isDouble){
-                        ss<<"as_double2(read_imagei(B,sampler,(int2)(lidy + "<<x<<"*ly+gstartxB,k+"<<y<<"*lx +lidx)))";
+                        ss<<"as_double2(read_imagei(B,sampler,b"<<y<<"_"<<x<<"addr))";
                     }else{
                         ss<<"(myread_imagef(B,(int2)(lidy + "<<x<<"*ly+gstartxB,k+"<<y<<"*lx +lidx)))";
                     }
@@ -143,7 +165,7 @@ bool genKernelTNOff(int lsizex,
 #endif
                     ss<<";\n";
                 }else{
-                    ss<<"B[(k+"<<y<<"*lx+lidx)*(ldb/simdwidth)+ gstartxB + lidy + "<<x<<"*ly];\n";
+                    ss<<"B[b"<<y<<"_"<<x<<"addr];\n";
                 }
             }
         }
@@ -152,8 +174,8 @@ bool genKernelTNOff(int lsizex,
     //ss<<" for(kk=0;kk<ktile;kk+=unroll){\n";
     ss<<"const int kk = 0;\n";
 
-	for (int x = 0; x < wtile/simdwidth; x++) {
-		for (int y = 0; y < ktile; y++) {
+	for (int y = 0; y < ktile; y++) {
+		for (int x = 0; x < wtile/simdwidth; x++) {
 			ss << "  const " << dtype << simdwidth << " b" << x << "_" << y << " = ";
 			if(storeb){
 				ss << "ldsB[kk+"<<y<<"][ly*"<<x<<"+lidy];\n";
@@ -176,9 +198,8 @@ bool genKernelTNOff(int lsizex,
 		}
 	}
 
-	for (int x = 0; x < htile/simdwidth; x++) {
-		for(int y=0;y<ktile;y++){
-
+	for(int y=0;y<ktile;y++){
+		for (int x = 0; x < htile/simdwidth; x++) {
 			ss << "  const " << dtype << simdwidth << " a" << x << "_" << y << " = ";
 			if(storea){
 				ss << "ldsA[kk+"<<y<<"][lx*"<<x<<"+lidx];\n";
@@ -1427,12 +1448,12 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
     else clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT,sizeof(cl_uint),&vecWidth,NULL);
 	bool imgA[] = {true,false};
 	bool imgB[] = {true,false};
-    for (int i = 1; i < 7; i++) {
+    for (int i = 3; i < 7; i++) {
         for (int j = 1; j < 4; j++) {
-            for (int simdidx = 2; simdidx < 3;simdidx++) {
+            for (int simdidx = 0; simdidx < 3;simdidx++) {
                 for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
-                    for(int sa = 1 ; sa<2; sa++){
-                        for(int sb = 1; sb <2 ; sb++){
+                    for(int sa = 0 ; sa<2; sa++){
+                        for(int sb = 0; sb <2 ; sb++){
                             for(int imgAidx=0;imgAidx<2;imgAidx++){
                                 for(int imgBidx=0;imgBidx<2;imgBidx++){
 

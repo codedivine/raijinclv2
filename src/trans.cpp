@@ -61,6 +61,7 @@ static bool buildKernel(cl_device_id dvc,cl_context ctx,string ksrc,cl_kernel *r
         //cout<<"Succesfully built kernel"<<endl;
         return true;
     }else{
+		cout<<kernel<<endl;
         cout<<"ERROR: kernel did not build correctly "<<errcode1<<" "<<errcode2<<" "<<errcode3<<endl;
         return false;
     }
