@@ -1428,13 +1428,13 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 	bool imgA[] = {true,false};
 	bool imgB[] = {true,false};
     for (int i = 1; i < 7; i++) {
-        for (int j = 0; j < 4; j++) {
-            for (int simdidx = 0; simdidx < 3;simdidx++) {
+        for (int j = 1; j < 4; j++) {
+            for (int simdidx = 2; simdidx < 3;simdidx++) {
                 for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
-                    for(int sa = 0 ; sa<1; sa++){
-                        for(int sb = 0; sb <1 ; sb++){
-                            for(int imgAidx=1;imgAidx<2;imgAidx++){
-                                for(int imgBidx=1;imgBidx<2;imgBidx++){
+                    for(int sa = 1 ; sa<2; sa++){
+                        for(int sb = 1; sb <2 ; sb++){
+                            for(int imgAidx=0;imgAidx<2;imgAidx++){
+                                for(int imgBidx=0;imgBidx<2;imgBidx++){
 
 
 

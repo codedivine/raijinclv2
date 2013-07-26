@@ -745,13 +745,13 @@ cl_event raijinApplyOpt(cl_kernel krnl,
             //cout<<curEventIndex<<endl;
             cl_mem *Cnewcopy = new cl_mem;
             *Cnewcopy = Cnew;
-            //clSetEventCallback(events[curEventIndex-1],CL_COMPLETE,releaseMemObject,(void *)Cnewcopy);
+            clSetEventCallback(events[curEventIndex-1],CL_COMPLETE,releaseMemObject,(void *)Cnewcopy);
             //clReleaseMemObject(Cnew);
         }
     }
     //cout<<"Finished dispatch"<<endl;
     cl_event evt = events[imax*jmax*kmax-1];
-    //clSetEventCallback(evt,CL_COMPLETE,RaijinGemmPlan::deleteGemmPlan,(void*)plan);
+    clSetEventCallback(evt,CL_COMPLETE,RaijinGemmPlan::deleteGemmPlan,(void*)plan);
     //cout<<"Was CL_SUCCESS? "<<(errcode==CL_SUCCESS)<<" "<<errcode<<endl;
     return evt;
 

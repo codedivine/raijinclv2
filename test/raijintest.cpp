@@ -3,7 +3,11 @@
 #include <iostream>
 #include <cmath>
 #include "rtimer.hpp"
+
+#ifdef RAIJIN_EXPERIMENTAL
 #include <mkl.h>
+#endif
+
 #include <malloc.h>
 
 using namespace std;
@@ -306,6 +310,7 @@ void testGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	delete[] C;
 }
 
+#ifdef RAIJIN_EXPERIMENTAL
 struct BlasParams{
 	CBLAS_ORDER order;
 	CBLAS_TRANSPOSE transA;
@@ -480,6 +485,7 @@ void testPartSgemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	_aligned_free(B);
 	_aligned_free(C);
 }
+#endif
 
 struct TestGemmSingle{
 	typedef float realtype;
@@ -559,7 +565,12 @@ int main(int argc, char **argv){
             testGemm<TestGemmDouble>(dvc,size,pattern,transA,transB);
 		}else if(dtype=='s'){
 			for(int i=1;i<=5;i++){
+#ifdef RAIJIN_EXPERIMENTAL
             testPartSgemm(dvc,size,pattern,transA,transB);
+#else
+				testGemm<TestGemmSingle>(dvc,size,pattern,transA,transB);
+#endif
+
 			}
         }else if(dtype=='z'){
             testGemmComplex<TestGemmZ>(dvc,size,transA,transB,true);

@@ -68,10 +68,10 @@ bool RaijinCL::supportsFp64(cl_device_id dvc){
         if(ext.compare("cl_khr_fp64")==0){
             supports = true;
             break;
-		}else if(ext.compare("cl_amd_fp64")==0){
+		}/*else if(ext.compare("cl_amd_fp64")==0){
 			supports = true;
 			break;
-		}
+		}*/
     }
     delete[] extensions;
     return supports;
