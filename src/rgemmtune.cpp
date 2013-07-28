@@ -104,37 +104,15 @@ bool genKernelTNOff(int lsizex,
         }
     }
     ss<<"for(k=0;k<K;k+=ktile){"<<endl;
-    if(storea){
-        ss<<"const int gstartxA = get_group_id(1)*(htile/simdwidth)*lx;\n";
-		 for(int y=0;y<(ktile/lsizex);y++){
-            for(int x=0;x<((htile*lsizex)/(simdwidth*lsizey));x++){
-				if(useImageA){
-					ss<<"int2 a"<<y<<"_"<<x<<"addr = (int2)(lidy+"<<x<<"*ly+gstartxA,k+"<<y<<"*lx + lidx );"<<endl;
-				}else{
-					ss<<"int a"<<y<<"_"<<x<<"addr = (k+"<<y<<"*lx+lidx)*(lda/simdwidth)+ gstartxA + lidy + "<<x<<"*ly;"<<endl;
-				}
-			}
-		 }
-	} 
-	if(storeb){
-		ss<<"const int gstartxB = get_group_id(0)*(wtile/simdwidth)*ly;\n";
-		for(int y=0;y<(ktile/lsizex);y++){
-			for(int x=0;x<((wtile*lsizey)/(simdwidth*lsizey));x++){
-				if(useImageB){
-					ss<<"int2 b"<<y<<"_"<<x<<"addr = (int2)(lidy + "<<x<<"*ly+gstartxB,k+"<<y<<"*lx +lidx);"<<endl;
-				}else{
-					ss<<"int b"<<y<<"_"<<x<<"addr = (k+"<<y<<"*lx+lidx)*(ldb/simdwidth)+ gstartxB + lidy + "<<x<<"*ly;"<<endl;
-				}
-			}
-		}
-	}
+	ss<<" const uint gstartxA = get_group_id(1)*lx*htile;"<<endl;
+	ss<<" const uint gstartxB = get_group_id(0)*ly*wtile;"<<endl;
 	if(storea){
         for(int y=0;y<(ktile/lsizex);y++){
             for(int x=0;x<((htile*lsizex)/(simdwidth*lsizey));x++){
                 ss<<" ldsA["<<y<<"*lx + lidx]["<<x<<"*ly + lidy] = ";
                 if(useImageA){
                     if(isDouble){
-                        ss<<"as_double2(read_imagei(A,sampler,a"<<y<<"_"<<x<<"addr))";
+                        ss<<"as_double2(read_imagei(A,sampler,(int2)(lidy+"<<x<<"*ly+gstartxA,k+"<<y<<"*lx + lidx )))";
                     }else{
                         ss<<"(myread_imagef(A,(int2)(lidy+"<<x<<"*ly+gstartxA,k+"<<y<<"*lx + lidx)))";
                     }
@@ -144,7 +122,7 @@ bool genKernelTNOff(int lsizex,
 #endif
                     ss<<";\n";
                 }else{
-                    ss<<"A[a"<<y<<"_"<<x<<"addr];\n";
+                    ss<<"A[(k+"<<y<<"*lx+lidx)*(lda/simdwidth)+ gstartxA + lidy + "<<x<<"*ly];\n";
                 }
             }
         }
@@ -155,7 +133,7 @@ bool genKernelTNOff(int lsizex,
                 ss<<" ldsB["<<y<<"*lx + lidx]["<<x<<"*ly + lidy] = ";
                 if(useImageB){
                     if(isDouble){
-                        ss<<"as_double2(read_imagei(B,sampler,b"<<y<<"_"<<x<<"addr))";
+                        ss<<"as_double2(read_imagei(B,sampler,(int2)(lidy + "<<x<<"*ly+gstartxB,k+"<<y<<"*lx +lidx)))";
                     }else{
                         ss<<"(myread_imagef(B,(int2)(lidy + "<<x<<"*ly+gstartxB,k+"<<y<<"*lx +lidx)))";
                     }
@@ -165,7 +143,7 @@ bool genKernelTNOff(int lsizex,
 #endif
                     ss<<";\n";
                 }else{
-                    ss<<"B[b"<<y<<"_"<<x<<"addr];\n";
+                    ss<<"B[(k+"<<y<<"*lx+lidx)*(ldb/simdwidth)+ gstartxB + lidy + "<<x<<"*ly];\n";
                 }
             }
         }
@@ -357,22 +335,6 @@ bool genKernelTNCons(int lsizex,
 		}
 	}
 	ss<<"for(k=0;k<K;k+=ktile){"<<endl;
-	if(useImageA && storea){
-			for(int y=0;y<(ktile/lsizex);y++){
-				for(int x=0;x<((htile*lsizex)/(simdwidth*lsizey));x++){
-					ss<<"const int2 a"<<y<<"_"<<x<<"addr = (int2)(lidy+"<<x<<"*ly+gstartxA,k+"<<y<<"*lx + lidx );"<<endl;
-				}
-			}
-	}
-	if(useImageB && storeb){
-		for(int y=0;y<(ktile/lsizex);y++){
-			for(int x=0;x<((wtile*lsizey)/(simdwidth*lsizey));x++){
-				ss<<" const int2 b"<<y<<"_"<<x<<"addr = (int2)(lidy + "<<x<<"*ly+gstartxB,k+"<<y<<"*lx +lidx);"<<endl;
-			}
-		}
-
-	}
-
 	if(storea){
 		ss<<"const int gstartxA = get_group_id(1)*(htile/simdwidth)*lx;\n";
 		for(int y=0;y<(ktile/lsizex);y++){
@@ -380,9 +342,9 @@ bool genKernelTNCons(int lsizex,
 				ss<<" ldsA["<<y<<"*lx + lidx]["<<x<<"*ly + lidy] = ";
 				if(useImageA){
 					if(isDouble){
-                        ss<<"as_double2(read_imagei(A,sampler,a"<<y<<"_"<<x<<"addr))";
+                        ss<<"as_double2(read_imagei(A,sampler,(int2)(lidy+"<<x<<"*ly+gstartxA,k+"<<y<<"*lx + lidx )))";
 					}else{
-                        ss<<"(read_imagef(A,sampler,a"<<y<<"_<<"<<x<<"addr))";
+                        ss<<"(read_imagef(A,sampler,(int2)(lidy+"<<x<<"*ly+gstartxA,k+"<<y<<"*lx + lidx )))";
 					}
                     ss<<".s";
                     for(int s=0;s<simdwidth;s++) ss<<s;
@@ -400,9 +362,9 @@ bool genKernelTNCons(int lsizex,
 				ss<<" ldsB["<<y<<"*lx + lidx]["<<x<<"*ly + lidy] = ";
 				if(useImageB){
 					if(isDouble){
-                        ss<<"as_double2(read_imagei(B,sampler,b"<<y<<"_"<<x<<"addr))";
+                        ss<<"as_double2(read_imagei(B,sampler,(int2)(lidy + "<<x<<"*ly+gstartxB,k+"<<y<<"*lx +lidx)))";
 					}else{
-                        ss<<"(read_imagef(B,sampler,b"<<y<<"_"<<x<<"addr))";
+                        ss<<"(read_imagef(B,sampler,(int2)(lidy + "<<x<<"*ly+gstartxB,k+"<<y<<"*lx +lidx)))";
 					}
                     ss<<".s";
                     for(int s=0;s<simdwidth;s++) ss<<s;
@@ -1448,7 +1410,7 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
     else clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT,sizeof(cl_uint),&vecWidth,NULL);
 	bool imgA[] = {true,false};
 	bool imgB[] = {true,false};
-    for (int i = 3; i < 7; i++) {
+    for (int i = 5; i < 7; i++) {
         for (int j = 1; j < 4; j++) {
             for (int simdidx = 0; simdidx < 3;simdidx++) {
                 for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
