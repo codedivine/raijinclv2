@@ -1,12 +1,17 @@
+
+#ifdef RAIJIN_EXPERIMENTAL
+extern "C"{
+#include <acml.h>
+}
+#pragma comment(lib,"libacml_mp_dll")
+#endif
+
 #include "raijin.hpp"
 #include "raijin_complex.hpp"
 #include <iostream>
 #include <cmath>
 #include "rtimer.hpp"
 
-#ifdef RAIJIN_EXPERIMENTAL
-#include <mkl.h>
-#endif
 
 #include <malloc.h>
 
@@ -157,10 +162,6 @@ static void testGemmComplex(cl_device_id dvc,unsigned int N,bool transA,bool tra
     clEnqueueWriteBuffer(q, bufB, CL_TRUE, 0, size, ptrB, 0, NULL, NULL);
     clEnqueueWriteBuffer(q, bufC, CL_TRUE, 0, size, ptrC, 0, NULL, NULL);
     clFlush( q);
-    RaijinParams params;
-    params.num_events = 0;
-    params.waitEvents = NULL;
-    params.queue = q;
     typedef typename T::GemmType GemmType;
     GemmType *gemm = GemmType::getInstance(ctx,dvc);
     const int niters = 5;
@@ -175,7 +176,7 @@ static void testGemmComplex(cl_device_id dvc,unsigned int N,bool transA,bool tra
         beta.s[0] = 0;
         beta.s[1] = 0;
         cl_event evt = gemm->apply(RaijinCL::RaijinRowMajor,transA,transB,N,N,N,
-                                                    alpha,bufA,N,0,bufB,N,0,beta,bufC,N,0,params);
+                                                    alpha,bufA,N,0,bufB,N,0,beta,bufC,N,0,q);
         clWaitForEvents(1,&evt);
         rt.stop();
         if(i>0) tdiff += rt.getDiff();
@@ -265,10 +266,6 @@ void testGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	typedef typename T::gemmtype Gemmtype;
 	Gemmtype *gemm = Gemmtype::getInstance(ctx,dvc);
 	//gemm->printOptKernelBinary();
-	RaijinParams params;
-	params.num_events = 0;
-	params.queue = q;
-	params.waitEvents = NULL;
     const int niters = 5;
     double tdiff = 0;
     for(int i=0;i<niters;i++){
@@ -279,9 +276,9 @@ void testGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
                                    1,bufA,K,0,
                                    bufB,N,0,
                                    0,
-                                   bufC,N,0,params);
-        clFlush(params.queue);
-        clFinish(params.queue);
+                                   bufC,N,0,q);
+        clFlush(q);
+        clFinish(q);
         rt.stop();
 		cout<<"Time "<<rt.getDiff()<<endl;
         if(i>1)
@@ -312,9 +309,9 @@ void testGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 
 #ifdef RAIJIN_EXPERIMENTAL
 struct BlasParams{
-	CBLAS_ORDER order;
-	CBLAS_TRANSPOSE transA;
-	CBLAS_TRANSPOSE transB;
+	//CBLAS_ORDER order;
+	char transA;
+	char transB;
 	int M;
 	int N;
 	int K;
@@ -330,7 +327,7 @@ struct BlasParams{
 
 DWORD WINAPI BlasFun(LPVOID params){
 	BlasParams *myParams = (BlasParams*)params;
-	cblas_sgemm(myParams->order,myParams->transA,myParams->transB,myParams->M,myParams->N,myParams->K,myParams->alpha,myParams->A,
+	sgemm(myParams->transA,myParams->transB,myParams->M,myParams->N,myParams->K,myParams->alpha,myParams->A,
 		myParams->lda,myParams->B,myParams->ldb,myParams->beta,myParams->C,myParams->ldc);
 	return 0;
 
@@ -340,6 +337,7 @@ DWORD WINAPI BlasFun(LPVOID params){
 
 void testPartSgemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	//mkl_set_num_threads(8);
+	cl_uint refCount;
 	cout<<"testPartSgemm "<<transA<<" "<<transB<<endl;
 	const int M = N;
 	const int K = N;
@@ -380,7 +378,8 @@ void testPartSgemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	cl_int errcode;
 
 	cl_context ctx = clCreateContext(conprop,1,&dvc,NULL,NULL,&errcode);
-	cout<<"Created context? "<<errcode<<endl;
+	clGetContextInfo(ctx,CL_CONTEXT_REFERENCE_COUNT,sizeof(cl_uint),&refCount,NULL);
+	cout<<"Reference count "<<refCount<<endl;
 	cl_command_queue q = clCreateCommandQueue(ctx,dvc,0,&errcode);
 	cl_mem bufA, bufB, bufC;
 	const int sizeA = sizeof(float)*M*K;
@@ -394,10 +393,10 @@ void testPartSgemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	RTimer rt;
     rt.start();
 	cout<<"Creating buffers CPU: "<<cpuPart<<" GPU: "<<gpuPart<<endl;
-	bufA = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, sizeA, A, &errcode);
-	bufB = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, sizeB, B, &errcode);
-	bufC = clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, sizeC*gpuPart/(cpuPart+gpuPart), C, &errcode);
-	//clEnqueueWriteBuffer(q, bufC, CL_TRUE, 0, sizeC, C, 0, NULL, NULL);
+	bufA = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeA, A, &errcode);
+	bufB = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeB, B, &errcode);
+	bufC = clCreateBuffer(ctx, CL_MEM_READ_WRITE, sizeC*gpuPart/(cpuPart+gpuPart), C, &errcode);
+	clEnqueueWriteBuffer(q, bufC, CL_TRUE, 0, sizeC, C, 0, NULL, NULL);
 	clFlush( q);
 	bufTimer.stop();
 	//gemm->printOptKernelBinary();
@@ -407,7 +406,7 @@ void testPartSgemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	params.waitEvents = NULL;
     const int niters = 1;
     double tdiff = 0;
-	void *ptr;
+	//void *ptr;
     for(int i=0;i<niters;i++){
         
 		int lda = transA ? M : K;
@@ -424,11 +423,11 @@ void testPartSgemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 		HANDLE threadHandle;
 		BlasParams myParams;
 		if(cpuPart>0) {
-			myParams.order = CblasRowMajor;
-			if(transA) myParams.transA = CblasTrans;
-			else myParams.transA = CblasNoTrans;
-			if(transB) myParams.transB = CblasTrans;
-			else myParams.transB = CblasNoTrans;
+			//myParams.order = CblasRowMajor;
+			if(transA) myParams.transA = 'T';
+			else myParams.transA = 'N';
+			if(transB) myParams.transB = 'T';
+			else myParams.transB = 'N';
 			myParams.M = M*cpuPart/(cpuPart+gpuPart);
 			myParams.N = N;
 			myParams.K = K;
@@ -458,26 +457,25 @@ void testPartSgemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	 tdiff = rt.getDiff()/niters;
 	  //cout<<"Time "<<tdiff<<endl;
 	//clEnqueueUnmapMemObject(q,bufC,ptr,0,NULL,NULL);
-	//clEnqueueReadBuffer(q,bufC,CL_TRUE,0,sizeC*gpuPart/(cpuPart+gpuPart),&C[N*cpuPart*M/(cpuPart+gpuPart)],0,NULL,NULL);
-	ptr = clEnqueueMapBuffer(q,bufC,CL_TRUE,CL_MAP_READ,0,sizeC*gpuPart/(cpuPart+gpuPart),0,NULL,NULL,NULL);
+	clEnqueueReadBuffer(q,bufC,CL_TRUE,0,sizeC*gpuPart/(cpuPart+gpuPart),&C[N*cpuPart*M/(cpuPart+gpuPart)],0,NULL,NULL);
+	//ptr = clEnqueueMapBuffer(q,bufC,CL_TRUE,CL_MAP_READ,0,sizeC*gpuPart/(cpuPart+gpuPart),0,NULL,NULL,NULL);
 	clFinish(q);
 	delete gemm;
 	double error = 0.0;
-	switch(pattern){
+	/*switch(pattern){
 		case 1:
 			error = verifyPattern1<float>(A,B,C,N,N,N);
 			break;
 		case 2:
 			error = verifyPattern2<float>(A,B,C,N,N,N);
 			break;
-	}
-	clEnqueueUnmapMemObject(q,bufC,ptr,0,NULL,NULL);
-	clFinish(q);
+	}*/
+//	clEnqueueUnmapMemObject(q,bufC,ptr,0,NULL,NULL);
+	//clFinish(q);
 	clReleaseMemObject(bufA);
 	clReleaseMemObject(bufB);
 	clReleaseMemObject(bufC);
 	clReleaseCommandQueue(q);
-	cl_uint refCount;
 	clGetContextInfo(ctx,CL_CONTEXT_REFERENCE_COUNT,sizeof(cl_uint),&refCount,NULL);
 	cout<<"Reference count of context "<<refCount<<endl;
 	clReleaseContext(ctx);
@@ -520,6 +518,37 @@ int main(int argc, char **argv){
 				cl_uint vendorid;
 				clGetDeviceInfo(dvc,CL_DEVICE_VENDOR_ID,sizeof(vendorid),&vendorid,NULL);
 				cout<<"Device "<<j<<":"<<dvcname<<" from vendor "<<vendorid<<endl;
+				//clGetDeviceInfo(dvc,CL_DEVICE_OPENCL_VERSION_MAJOR,
+#ifdef RAIJIN_EXPERIMENTAL
+				cl_device_fp_config fpconfig;
+				clGetDeviceInfo(dvc,CL_DEVICE_DOUBLE_FP_CONFIG,sizeof(fpconfig),&fpconfig,NULL);
+				cout<<"Double precision support:";
+				if(fpconfig==0){
+					cout<<" None";
+				}
+				if(fpconfig & CL_FP_DENORM){
+					cout<<" CL_FP_DENORM";
+				}
+				if(fpconfig & CL_FP_INF_NAN){
+					cout<<" CL_FP_INF_NAN";
+				}
+				if(fpconfig & CL_FP_ROUND_TO_NEAREST){
+					cout<<" CL_FP_ROUND_TO_NEAREST";
+				}
+				if(fpconfig & CL_FP_ROUND_TO_ZERO){
+					cout<" CL_FP_ROUND_TO_ZERO";
+				}
+				if(fpconfig & CL_FP_ROUND_TO_INF){
+					cout<<" CL_FP_ROUND_TO_INF";
+				}
+				if(fpconfig & CL_FP_FMA){
+					cout<<" CL_FP_FMA";
+				}
+				if(fpconfig & CL_FP_SOFT_FLOAT){
+					cout<<" CL_FP_SOFT_FLOAT";
+				}
+				cout<<endl;
+#endif
 			}
 		}
 

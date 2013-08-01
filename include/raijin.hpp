@@ -56,12 +56,6 @@ struct RaijinGemmOptKernel{
 std::istream& operator>>(std::istream &stream,RaijinGemmOptKernel& krnl);
 std::ostream& operator<<(std::ostream &stream,RaijinGemmOptKernel krnl);
 
-struct RaijinParams{
-	cl_uint num_events;
-	cl_event *waitEvents;
-	cl_command_queue queue;
-};
-
 class RaijinCopy{
     cl_context ctx;
     cl_device_id dvc;
@@ -70,48 +64,48 @@ class RaijinCopy{
 public:
     RaijinCopy(cl_context context,cl_device_id device);
     ~RaijinCopy();
-    cl_event scopyToBuf(RaijinParams rp,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
-    cl_event scopyToImg(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event scopyToBuf(cl_command_queue q,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event scopyToImg(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
-    cl_event dcopyToBuf(RaijinParams rp,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
-    cl_event dcopyToImg(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event dcopyToBuf(cl_command_queue q,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event dcopyToImg(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
-    cl_event ccopyToBuf(RaijinParams rp,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
-    cl_event ccopyToImg(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event ccopyToBuf(cl_command_queue q,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event ccopyToImg(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
-    cl_event zcopyToBuf(RaijinParams rp,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
-    cl_event zcopyToImg(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event zcopyToBuf(cl_command_queue q,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event zcopyToImg(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 };
 
 template <typename T>
-cl_event raijinCopyToBuf(RaijinCopy *copyObj,RaijinParams rp,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
+cl_event raijinCopyToBuf(RaijinCopy *copyObj,cl_command_queue q,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
-cl_event raijinCopyToBuf<cl_float>(RaijinCopy *copyObj,RaijinParams rp,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
+cl_event raijinCopyToBuf<cl_float>(RaijinCopy *copyObj,cl_command_queue q,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
-cl_event raijinCopyToBuf<cl_float2>(RaijinCopy *copyObj,RaijinParams rp,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
+cl_event raijinCopyToBuf<cl_float2>(RaijinCopy *copyObj,cl_command_queue q,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
-cl_event raijinCopyToBuf<cl_double>(RaijinCopy *copyObj,RaijinParams rp,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
+cl_event raijinCopyToBuf<cl_double>(RaijinCopy *copyObj,cl_command_queue q,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
-cl_event raijinCopyToBuf<cl_double2>(RaijinCopy *copyObj,RaijinParams rp,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
+cl_event raijinCopyToBuf<cl_double2>(RaijinCopy *copyObj,cl_command_queue q,cl_mem input,cl_mem output,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <typename T>
-cl_event raijinCopyToImg(RaijinCopy *copyObj,RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+cl_event raijinCopyToImg(RaijinCopy *copyObj,cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
-cl_event raijinCopyToImg<cl_float>(RaijinCopy *copyObj,RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+cl_event raijinCopyToImg<cl_float>(RaijinCopy *copyObj,cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
-cl_event raijinCopyToImg<cl_double>(RaijinCopy *copyObj,RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+cl_event raijinCopyToImg<cl_double>(RaijinCopy *copyObj,cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
-cl_event raijinCopyToImg<cl_float2>(RaijinCopy *copyObj,RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+cl_event raijinCopyToImg<cl_float2>(RaijinCopy *copyObj,cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
-cl_event raijinCopyToImg<cl_double2>(RaijinCopy *copyObj,RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+cl_event raijinCopyToImg<cl_double2>(RaijinCopy *copyObj,cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 class RaijinScale{
     cl_context ctx;
@@ -119,26 +113,26 @@ class RaijinScale{
     cl_kernel skrnl,dkrnl,ckrnl,zkrnl;
 public:
     RaijinScale(cl_context ctx,cl_device_id dvc);
-    cl_event sscale(RaijinParams rp,cl_mem C,size_t M,size_t N,cl_int ldc,cl_float beta);
-    cl_event dscale(RaijinParams rp,cl_mem C,int M,int N,int ldc,cl_double beta);
-    cl_event cscale(RaijinParams rp,cl_mem C,int M,int N,int ldc,cl_float2 beta);
-    cl_event zscale(RaijinParams rp,cl_mem C,int M,int N,int ldc,cl_double2 beta);
+    cl_event sscale(cl_command_queue q,cl_mem C,size_t M,size_t N,cl_int ldc,cl_float beta);
+    cl_event dscale(cl_command_queue q,cl_mem C,int M,int N,int ldc,cl_double beta);
+    cl_event cscale(cl_command_queue q,cl_mem C,int M,int N,int ldc,cl_float2 beta);
+    cl_event zscale(cl_command_queue q,cl_mem C,int M,int N,int ldc,cl_double2 beta);
 };
 
 template <typename T>
-cl_event raijinScale(RaijinScale *rs,RaijinParams rp,cl_mem C,size_t M,size_t N,cl_int ldc,T beta);
+cl_event raijinScale(RaijinScale *rs,cl_command_queue q,cl_mem C,size_t M,size_t N,cl_int ldc,T beta);
 
 template <>
-cl_event raijinScale<cl_float>(RaijinScale *rs,RaijinParams rp,cl_mem C,size_t M,size_t N,cl_int ldc,cl_float beta);
+cl_event raijinScale<cl_float>(RaijinScale *rs,cl_command_queue q,cl_mem C,size_t M,size_t N,cl_int ldc,cl_float beta);
 
 template <>
-cl_event raijinScale<cl_float2>(RaijinScale *rs,RaijinParams rp,cl_mem C,size_t M,size_t N,cl_int ldc,cl_float2 beta);
+cl_event raijinScale<cl_float2>(RaijinScale *rs,cl_command_queue q,cl_mem C,size_t M,size_t N,cl_int ldc,cl_float2 beta);
 
 template <>
-cl_event raijinScale<cl_double>(RaijinScale *rs,RaijinParams rp,cl_mem C,size_t M,size_t N,cl_int ldc,cl_double beta);
+cl_event raijinScale<cl_double>(RaijinScale *rs,cl_command_queue q,cl_mem C,size_t M,size_t N,cl_int ldc,cl_double beta);
 
 template <>
-cl_event raijinScale<cl_double2>(RaijinScale *rs,RaijinParams rp,cl_mem C,size_t M,size_t N,cl_int ldc,cl_double2 beta);
+cl_event raijinScale<cl_double2>(RaijinScale *rs,cl_command_queue q,cl_mem C,size_t M,size_t N,cl_int ldc,cl_double2 beta);
 
 
 
@@ -154,17 +148,17 @@ std::ostream& operator<<(std::ostream &stream,RaijinTransOpt krnl);
 class RaijinTranspose{
 public:
     RaijinTranspose(cl_device_id device,cl_context context);
-    cl_event stransToBuf(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
-    cl_event stransToImg(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event stransToBuf(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event stransToImg(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
-    cl_event dtransToBuf(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
-    cl_event dtransToImg(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event dtransToBuf(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event dtransToImg(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
-    cl_event ctransToBuf(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
-    cl_event ctransToImg(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event ctransToBuf(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event ctransToImg(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
-    cl_event ztransToBuf(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
-    cl_event ztransToImg(RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event ztransToBuf(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+    cl_event ztransToImg(cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
     static void tuneStrans(cl_device_id dvc);
     static void tuneDtrans(cl_device_id dvc);
     static void tuneCtrans(cl_device_id dvc);
@@ -200,44 +194,44 @@ private:
 
 template <typename T>
 cl_event transToBuf(RaijinTranspose *trans,
-                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+                    cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
 cl_event transToBuf<cl_float>(RaijinTranspose *trans,
-                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+                    cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
 cl_event transToBuf<cl_double>(RaijinTranspose *trans,
-                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+                    cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
 cl_event transToBuf<cl_float2>(RaijinTranspose *trans,
-                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+                    cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
 cl_event transToBuf<cl_double2>(RaijinTranspose *trans,
-                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+                    cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 
 template <typename T>
 cl_event transToImg(RaijinTranspose *trans,
-                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+                    cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
 cl_event transToImg<cl_float>(RaijinTranspose *trans,
-                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+                    cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
 cl_event transToImg<cl_double>(RaijinTranspose *trans,
-                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+                    cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
 cl_event transToImg<cl_float2>(RaijinTranspose *trans,
-                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+                    cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 template <>
 cl_event transToImg<cl_double2>(RaijinTranspose *trans,
-                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
+                    cl_command_queue q,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
 
 void raijinTuneSgemm(cl_device_id dvc);
 void raijinTuneDgemm(cl_device_id dvc);
@@ -446,7 +440,7 @@ RaijinGemmPlan *raijinGetGemmPlan(RaijinGemmOptKernel optparams,
 
 template <typename T>
 bool raijinGemmExecCopy(RaijinGemmPlan *plan,
-                        const RaijinParams& params,
+                        cl_command_queue q,
                         cl_mem bufA,
                         cl_mem bufB,
                         cl_mem bufC,
@@ -484,17 +478,13 @@ bool raijinGemmExecCopy(RaijinGemmPlan *plan,
                 const int simd = plan->optparams.simdwidth;
                 const int lda = plan->lda;
                 cl_event evt = NULL;
-                RaijinParams rptemp;
-                rptemp.num_events = numEvents;
-                rptemp.waitEvents = waitList;
-				rptemp.queue = params.queue;
                 //std::cout<<"raijinGemmExecCopy: A isAlloc "<<isAlloc<<" isCopy "<<isCopy<<" isTrans "<<isTrans<<" isImg "<<plan->optparams.imageA<<std::endl;
                 if(isAlloc && isCopy){
                     if(plan->optparams.imageA){
-                        evt = raijinCopyToImg<T>(copyObj,rptemp,bufA,Anew,simd,startRow,endRow,startCol,endCol,lda);
+                        evt = raijinCopyToImg<T>(copyObj,q,bufA,Anew,simd,startRow,endRow,startCol,endCol,lda);
                     }else{
                         //std::cout<<"raijinExecGemmCopy: Dispatching A copy "<<startRow<<" "<<" "<<endRow<<" "<<startCol<<" "<<endCol<<std::endl;
-                        evt = raijinCopyToBuf<T>(copyObj,rptemp,bufA,Anew,startRow,endRow,startCol,endCol,lda);
+                        evt = raijinCopyToBuf<T>(copyObj,q,bufA,Anew,startRow,endRow,startCol,endCol,lda);
                     }
                 }else if(isAlloc && isTrans){
                     if(plan->optparams.imageA){
@@ -539,25 +529,22 @@ bool raijinGemmExecCopy(RaijinGemmPlan *plan,
                 const int simd = plan->optparams.simdwidth;
                 const int ldb = plan->ldb;
                 cl_event evt = NULL;
-                RaijinParams rptemp;
-                rptemp.num_events = numEvents;
-                rptemp.waitEvents = waitList;
-				rptemp.queue = params.queue;
+      
                 //std::cout<<"raijinGemmExecCopy: B isAlloc "<<isAlloc<<" isCopy "<<isCopy<<" isTrans "<<isTrans<<" isImg "<<plan->optparams.imageB<<std::endl;
                 if(isAlloc && isCopy){
                     if(plan->optparams.imageB){
-                        evt = raijinCopyToImg<T>(copyObj,rptemp,bufB,Bnew,simd,startRow,endRow,startCol,endCol,ldb);
+                        evt = raijinCopyToImg<T>(copyObj,q,bufB,Bnew,simd,startRow,endRow,startCol,endCol,ldb);
 
                     }else{
                         //std::cout<<"raijinExecGemmCopy: Dispatching B copy "<<startRow<<" "<<" "<<endRow<<" "<<startCol<<" "<<endCol<<std::endl;
-                        evt = raijinCopyToBuf<T>(copyObj,rptemp,bufB,Bnew,startRow,endRow,startCol,endCol,ldb);
+                        evt = raijinCopyToBuf<T>(copyObj,q,bufB,Bnew,startRow,endRow,startCol,endCol,ldb);
                     }
                 }else if(isAlloc && isTrans){
                     if(plan->optparams.imageB){
-                        evt = transToImg<T>(transObj,rptemp,bufB,Bnew,simd,startRow,endRow,startCol,endCol,ldb);
+                        evt = transToImg<T>(transObj,q,bufB,Bnew,simd,startRow,endRow,startCol,endCol,ldb);
                     }else{
                         //std::cout<<"raijinExecGemmCopy: Dispatching B trans "<<startRow<<" "<<" "<<endRow<<" "<<startCol<<" "<<endCol<<std::endl;
-                        evt = transToBuf<T>(transObj,rptemp,bufB,Bnew,simd,startRow,endRow,startCol,endCol,ldb);
+                        evt = transToBuf<T>(transObj,q,bufB,Bnew,simd,startRow,endRow,startCol,endCol,ldb);
                     }
 
                 }else{
@@ -606,7 +593,7 @@ cl_event raijinApplyOpt(cl_kernel krnl,
                         T beta,
                         cl_mem C,
                         cl_uint ldc,
-                        RaijinParams params,RaijinTranspose *transObj,RaijinCopy *copyObj,RaijinScale *scaleObj){
+                        cl_command_queue q,RaijinTranspose *transObj,RaijinCopy *copyObj,RaijinScale *scaleObj){
 	using namespace std;
                            //cout<<"Inside applyOpt"<<endl;
     const size_t elemsize = sizeof(T);
@@ -765,7 +752,7 @@ public:
             T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
             cl_mem B, cl_uint ldb, cl_uint offsetB,
             T beta,
-            cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
+            cl_mem C, cl_uint ldc, cl_uint offsetC, cl_command_queue q);
     ~RaijinGemm();
 private:
     RaijinTranspose *transObj;
@@ -777,12 +764,12 @@ private:
             T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
             cl_mem B, cl_uint ldb, cl_uint offsetB,
             T beta,
-            cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params);
+            cl_mem C, cl_uint ldc, cl_uint offsetC, cl_command_queue q);
     cl_event applyOpt(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
             T alpha, cl_mem A, cl_uint lda,
             cl_mem B, cl_uint ldb,
             T beta,
-            cl_mem C, cl_uint ldc, RaijinParams params);
+            cl_mem C, cl_uint ldc, cl_command_queue q);
     RaijinGemmOptKernel optkernel;
     cl_context ctx;
     cl_device_id dvc;
@@ -872,7 +859,7 @@ cl_event RaijinGemm<T>::applyGen(enum RAIJIN_ORDER order, bool transA, bool tran
         T alpha, cl_mem A, cl_uint lda, unsigned int offsetA,
         cl_mem B, cl_uint ldb, unsigned int offsetB,
         T beta,
-        cl_mem C, cl_uint ldc, unsigned int offsetC, RaijinParams params){
+        cl_mem C, cl_uint ldc, unsigned int offsetC, cl_command_queue q){
     //cout<<"Entering applyGen "<<M<<" "<<N<<" "<<K<<endl;
     const size_t elemsize = sizeof(T);
     cl_kernel krnl = gencompiled;
@@ -935,12 +922,12 @@ cl_event RaijinGemm<T>::apply(enum RAIJIN_ORDER order, bool transA, bool transB,
         T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
         cl_mem B, cl_uint ldb, cl_uint offsetB,
         T beta,
-        cl_mem C, cl_uint ldc, cl_uint offsetC, RaijinParams params){
+        cl_mem C, cl_uint ldc, cl_uint offsetC, cl_command_queue q){
     //cout<<"Entering apply"<<endl;
     const int elemsize = sizeof(T);
     if(order==RaijinColMajor){
         //untested
-        return apply(RaijinRowMajor,transA,transB,N,M,K,alpha,B,ldb,offsetB,A,lda,offsetA,beta,C,ldc,offsetC,params);
+        return apply(RaijinRowMajor,transA,transB,N,M,K,alpha,B,ldb,offsetB,A,lda,offsetA,beta,C,ldc,offsetC,q);
     }
 
 
@@ -951,11 +938,6 @@ cl_event RaijinGemm<T>::apply(enum RAIJIN_ORDER order, bool transA, bool transB,
     optN = N - N%(optkernel.wtile*optkernel.lsizey);
     //cout<<optM<<" "<<optN<<" "<<optK<<" "<<optkernel.ktile<<endl;
     cl_int errcode;
-    RaijinParams temp;
-    temp.queue = params.queue;
-    temp.waitEvents = new cl_event[params.num_events+4];
-    temp.num_events = params.num_events;
-    for(int i=0;i<params.num_events;i++) temp.waitEvents[i] = params.waitEvents[i];
     if(optM>0 && optN>0 && optK>0){
         if(offsetA>0){
             cl_buffer_region regA;
@@ -982,7 +964,7 @@ cl_event RaijinGemm<T>::apply(enum RAIJIN_ORDER order, bool transA, bool transB,
             optC = C;
         }
 
-        cl_event evt = applyOpt(order,transA,transB,optM,optN,optK,alpha,optA,lda,optB,ldb,beta,optC,ldc,temp);
+        cl_event evt = applyOpt(order,transA,transB,optM,optN,optK,alpha,optA,lda,optB,ldb,beta,optC,ldc,q);
         if(offsetA>0) clReleaseMemObject(optA);
         if(offsetB>0) clReleaseMemObject(optB);
         if(offsetC>0) clReleaseMemObject(optC);
@@ -1042,7 +1024,7 @@ cl_event RaijinGemm<T>::applyOpt(enum RAIJIN_ORDER order, bool transA, bool tran
         T alpha, cl_mem A, cl_uint lda,
         cl_mem B, cl_uint ldb,
         T beta,
-        cl_mem C, cl_uint ldc, RaijinParams params){
+        cl_mem C, cl_uint ldc, cl_command_queue q){
     //cout<<"Entering applyOpt "<<M<<" "<<N<<" "<<K<<endl;
     return raijinApplyOpt<T>(optcompiled,optkernel,ctx,dvc,
                           order,transA,transB,M,N,K,alpha,A,lda,B,ldb,beta,C,ldc,params,transObj,copyObj,scaleObj);
