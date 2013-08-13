@@ -1326,17 +1326,13 @@ double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, R
 	clEnqueueWriteBuffer(q, bufB, CL_TRUE, 0, size, ptrB, 0, NULL, NULL);
 	clEnqueueWriteBuffer(q, bufC, CL_TRUE, 0, size, ptrC, 0, NULL, NULL);
 	clFlush( q);
-	RaijinParams params;
-	params.num_events = 0;
-	params.waitEvents = NULL;
-	params.queue = q;
 	const int niters = 3;
 	double tdiff = 0;
 	for(int i=0;i<niters;i++){
 		RTimer rt;
 		rt.start();
         cl_event evt = raijinApplyOpt<realtype>(krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N,N,N,1,
-                                                bufA,N,bufB,N,0,bufC,N,params,transObj,copyObj,scaleObj);
+                                                bufA,N,bufB,N,0,bufC,N,q,transObj,copyObj,scaleObj);
 		clWaitForEvents(1,&evt);
 		rt.stop();
 		if(i>0) tdiff += rt.getDiff();

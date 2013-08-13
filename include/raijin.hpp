@@ -451,8 +451,8 @@ bool raijinGemmExecCopy(RaijinGemmPlan *plan,
     const int imax = plan->tiles.ivals.size()-1;
     const int jmax = plan->tiles.jvals.size()-1;
     const int kmax = plan->tiles.kvals.size()-1;
-    cl_event *waitList = params.num_events>0? params.waitEvents:NULL;
-    cl_uint numEvents = params.num_events;
+//    cl_event *waitList = params.num_events>0? params.waitEvents:NULL;
+    //cl_uint numEvents = params.num_events;
     std::vector<cl_event> acopyevts(imax*kmax);
     std::vector<cl_event> bcopyevts(kmax*jmax);
     if(doFirst){
@@ -488,21 +488,17 @@ bool raijinGemmExecCopy(RaijinGemmPlan *plan,
                     }
                 }else if(isAlloc && isTrans){
                     if(plan->optparams.imageA){
-                        evt = transToImg<T>(transObj,rptemp,bufA,Anew,simd,startRow,endRow,startCol,endCol,lda);
+                        evt = transToImg<T>(transObj,q,bufA,Anew,simd,startRow,endRow,startCol,endCol,lda);
                     }else{
 						//std::cout<<"raijinExecGemmCopy: Dispatching A trans to buf "<<startRow<<" "<<" "<<endRow<<" "<<startCol<<" "<<endCol<<std::endl;
-                        evt = transToBuf<T>(transObj,rptemp,bufA,Anew,simd,startRow,endRow,startCol,endCol,lda);
+                        evt = transToBuf<T>(transObj,q,bufA,Anew,simd,startRow,endRow,startCol,endCol,lda);
                     }
 
                 }else{
                     plan->abufs.memobj[index] = bufA;
                 }
                 acopyevts[index] = evt;
-                if(evt!=NULL){
-                    numEvents = 1;
-                    waitList = &acopyevts[index];
-                    if(retevt!=NULL) *retevt = evt;
-                }
+				if(evt!=NULL) *retevt = evt;
             }
         }
     }
@@ -551,12 +547,7 @@ bool raijinGemmExecCopy(RaijinGemmPlan *plan,
                     plan->bbufs.memobj[index] = bufB;
                 }
                 bcopyevts[index] = evt;
-                if(evt!=NULL){
-                    numEvents = 1;
-                    waitList = &bcopyevts[index];
-                    if(retevt!=NULL) *retevt = evt;
-                }
-
+				if(evt!=NULL) *retevt = evt;
             }
         }
     }
@@ -600,8 +591,6 @@ cl_event raijinApplyOpt(cl_kernel krnl,
     cl_device_type dvctype;
     clGetDeviceInfo(dvc,CL_DEVICE_TYPE,sizeof(dvctype),&dvctype,NULL);
     const int msize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024:8192;
-
-    if(params.num_events==0) params.waitEvents = NULL;
     
 	//cl_event scaleEvt = raijinScale<T>(scaleObj,params,C,M,N,ldc,beta);
 
@@ -634,17 +623,12 @@ cl_event raijinApplyOpt(cl_kernel krnl,
 
 	RaijinGemmPlan *plan = raijinGetGemmPlan<T>(optparams,ctx,dvc,order,transA,transB,M,N,K,lda,ldb,msize);
     cl_event copyEvt=NULL;
-    raijinGemmExecCopy<T>(plan,params,A,B,C,ldc,true,true,&copyEvt,transObj,copyObj,scaleObj);
+    raijinGemmExecCopy<T>(plan,q,A,B,C,ldc,true,true,&copyEvt,transObj,copyObj,scaleObj);
 
     const int imax = plan->tiles.ivals.size()-1;
     const int jmax = plan->tiles.jvals.size()-1;
     const int kmax = plan->tiles.kvals.size()-1;
 
-
-	cl_uint numEvents = 0;
-	cl_uint curEventIndex = 0;
-    std::vector<cl_event> events(imax*jmax*kmax);
-    cl_event *waitList = NULL;
 	/*if(copyEvt!=NULL){
         //cout<<"raijinApplyOpt: Waitliset set to copy"<<endl;
         waitList = &copyEvt;
@@ -655,6 +639,7 @@ cl_event raijinApplyOpt(cl_kernel krnl,
 		numEvents = params.num_events;
 	}*/
 
+	cl_event lastEvt;
     for(int i=0;i<imax;i++){
         for(int j=0;j<jmax;j++){
             size_t gsize[2], lsize[2];
@@ -675,11 +660,7 @@ cl_event raijinApplyOpt(cl_kernel krnl,
                 //cout<<"Size ("<<Mnew<<","<<Nnew<<")"<<endl;
                 cl_int kcode0, kcode1, kcode2, kcode3, kcode4, kcode5, kcode6, kcode7,kcode8;
                 const cl_uint Kd = plan->tiles.kvals[k+1]-plan->tiles.kvals[k];
-                int prevEventIndex = curEventIndex-1;
-				if(curEventIndex>0){
-					waitList = &events[prevEventIndex];
-					numEvents = 1;
-				}
+                //int prevEventIndex = curEventIndex-1;
                 //cout<<"applyOpt: "<<Mnew<<" "<<Nnew<<" "<<Kd<<endl;
                 const cl_mem Anew = plan->abufs.memobj[i*kmax+k];
                 const cl_mem Bnew = plan->bbufs.memobj[k*jmax+j];
@@ -719,28 +700,28 @@ cl_event raijinApplyOpt(cl_kernel krnl,
                 T newbeta = raijinGetOne<T>();
                 //if(k==0) newbeta = beta;
                 kcode8 = clSetKernelArg(krnl, 8, elemsize, &beta);
+				cl_event evt;
                 //cout<<"Dispatching "<<gsize[1]<<" "<<gsize[0]<<" "<<lsize[1]<<" "<<lsize[0]<<endl;
-                cl_int errcode = clEnqueueNDRangeKernel(params.queue, krnl, 2,NULL, gsize, lsize,numEvents, waitList, &events[curEventIndex]);
+                cl_int errcode = clEnqueueNDRangeKernel(q, krnl, 2,NULL, gsize, lsize,0, NULL, &evt);
+				lastEvt = evt;
 				if(errcode!=CL_SUCCESS){
 					cout<<"applyRegionOpt: "<<kcode0<<" "<<kcode1<<" "<<kcode2<<" "<<kcode3<<" "<<kcode4<<" "<<kcode5<<" "<<kcode6<<" "<<kcode7<<" "<<kcode8<<endl;
 					cout<<"applyRegionOpt: return code "<<errcode<<endl;
 				}
                 //clWaitForEvents(1,&events[curEventIndex]);
                 //cout<<"Finished dispatching this iteration"<<endl;
-                curEventIndex++;
+                //curEventIndex++;
             }
             //cout<<curEventIndex<<endl;
+
+			//TODO: Need to put these on a resource cleaner somewhere?
             cl_mem *Cnewcopy = new cl_mem;
             *Cnewcopy = Cnew;
-            clSetEventCallback(events[curEventIndex-1],CL_COMPLETE,releaseMemObject,(void *)Cnewcopy);
+            //clSetEventCallback(events[curEventIndex-1],CL_COMPLETE,releaseMemObject,(void *)Cnewcopy);
             //clReleaseMemObject(Cnew);
         }
     }
-    //cout<<"Finished dispatch"<<endl;
-    cl_event evt = events[imax*jmax*kmax-1];
-    clSetEventCallback(evt,CL_COMPLETE,RaijinGemmPlan::deleteGemmPlan,(void*)plan);
-    //cout<<"Was CL_SUCCESS? "<<(errcode==CL_SUCCESS)<<" "<<errcode<<endl;
-    return evt;
+    return lastEvt;
 
 }
 
@@ -865,7 +846,6 @@ cl_event RaijinGemm<T>::applyGen(enum RAIJIN_ORDER order, bool transA, bool tran
     cl_kernel krnl = gencompiled;
     cl_int kcode0, kcode1, kcode2, kcode3, kcode4, kcode5, kcode6, kcode7,kcode8,kcode9,kcode10,kcode11;
     cl_mem opA = A;
-    cl_event transEvtA,transEvtB;
     if(transA){
         //cl_event transToBuf(RaijinTranspose *trans,
         //                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
@@ -874,10 +854,8 @@ cl_event RaijinGemm<T>::applyGen(enum RAIJIN_ORDER order, bool transA, bool tran
        region.origin = offsetA;
        region.size = ((K-1)*lda + M)*sizeof(T);
        cl_mem subBufferA = clCreateSubBuffer(A,CL_MEM_READ_ONLY,CL_BUFFER_CREATE_TYPE_REGION,&region,NULL);
-       transEvtA = transToBuf<T>(transObj,params,subBufferA,opA,1,0,K,0,M,lda);
+       transToBuf<T>(transObj,q,subBufferA,opA,1,0,K,0,M,lda);
        lda = K;
-       params.num_events = 1;
-       params.waitEvents = &transEvtA;
     }
 
     cl_mem opB = B;
@@ -888,10 +866,8 @@ cl_event RaijinGemm<T>::applyGen(enum RAIJIN_ORDER order, bool transA, bool tran
         region.origin = offsetB;
         region.size = ((N-1)*lda + K)*sizeof(T);
         cl_mem subBufferB = clCreateSubBuffer(B,CL_MEM_READ_ONLY,CL_BUFFER_CREATE_TYPE_REGION,&region,NULL);
-        transEvtB = transToBuf<T>(transObj,params,subBufferB,opB,1,0,N,0,K,ldb);
+        transToBuf<T>(transObj,q,subBufferB,opB,1,0,N,0,K,ldb);
         ldb = K;
-        params.num_events = 1;
-        params.waitEvents = &transEvtB;
     }
     kcode0 = clSetKernelArg(krnl, 0, sizeof(cl_uint), &K);
     kcode1 = clSetKernelArg(krnl, 1, elemsize, &alpha);
@@ -911,8 +887,7 @@ cl_event RaijinGemm<T>::applyGen(enum RAIJIN_ORDER order, bool transA, bool tran
     gsize[1] = M;
     gsize[0] = N ;
     cl_event evt;
-    cl_event *waitList = (params.num_events>0) ? params.waitEvents : NULL;
-    cl_int errcode = clEnqueueNDRangeKernel(params.queue, krnl, 2, NULL, gsize, NULL, params.num_events, waitList, &evt);
+    cl_int errcode = clEnqueueNDRangeKernel(q, krnl, 2, NULL, gsize, NULL, 0, NULL, &evt);
     //cout<<"Was CL_SUCCESS? "<<(errcode==CL_SUCCESS)<<" "<<errcode<<endl;
     return evt;
 }
@@ -936,6 +911,7 @@ cl_event RaijinGemm<T>::apply(enum RAIJIN_ORDER order, bool transA, bool transB,
     optM = M - M%(optkernel.htile*optkernel.lsizex);
     optK = K - K%(optkernel.ktile);
     optN = N - N%(optkernel.wtile*optkernel.lsizey);
+	cl_event lastEvt;
     //cout<<optM<<" "<<optN<<" "<<optK<<" "<<optkernel.ktile<<endl;
     cl_int errcode;
     if(optM>0 && optN>0 && optK>0){
@@ -964,41 +940,31 @@ cl_event RaijinGemm<T>::apply(enum RAIJIN_ORDER order, bool transA, bool transB,
             optC = C;
         }
 
-        cl_event evt = applyOpt(order,transA,transB,optM,optN,optK,alpha,optA,lda,optB,ldb,beta,optC,ldc,q);
+        lastEvt = applyOpt(order,transA,transB,optM,optN,optK,alpha,optA,lda,optB,ldb,beta,optC,ldc,q);
         if(offsetA>0) clReleaseMemObject(optA);
         if(offsetB>0) clReleaseMemObject(optB);
         if(offsetC>0) clReleaseMemObject(optC);
-        temp.waitEvents[temp.num_events] = evt;
-        temp.num_events++;
     }
 
     //calculate remaining summations for optM*optN portion of C
     if(K>optK){
         //cout<<"Remaining K"<<endl;
         int remK = K - optK;
-        cl_event evt = applyGen(order,transA,transB,optM,optN,remK,alpha,A,lda, offsetA+optK, B,ldb,offsetB+optK*ldb, beta, C,ldc,offsetC, temp);
-        temp.waitEvents[temp.num_events] = evt;
-        temp.num_events++;
+        lastEvt = applyGen(order,transA,transB,optM,optN,remK,alpha,A,lda, offsetA+optK, B,ldb,offsetB+optK*ldb, beta, C,ldc,offsetC,q);
     }
 
     //Calculate the (M-optM) remaining rows of C
     if(M>optM){
         //cout<<"Remaining M"<<endl;
         int remM = M- optM;
-        cl_event evt = applyGen(order,transA,transB,remM,N,K,alpha, A,lda, offsetA+optM*lda, B,ldb,offsetB, beta, C,ldc,offsetC+optM*ldc, temp);
-        temp.waitEvents[temp.num_events] = evt;
-        temp.num_events++;
+        lastEvt = applyGen(order,transA,transB,remM,N,K,alpha, A,lda, offsetA+optM*lda, B,ldb,offsetB, beta, C,ldc,offsetC+optM*ldc,q);
     }
 
     if(N>optN){
         //cout<<"Remaining N"<<endl;
         int remN = N- optN;
-        cl_event evt = applyGen(order,transA,transB, M,remN,K,alpha, A,lda, offsetA, B,ldb,offsetB+optN, beta, C,ldc,offsetC+optN, temp);
-        temp.waitEvents[temp.num_events] = evt;
-        temp.num_events++;
+        lastEvt = applyGen(order,transA,transB, M,remN,K,alpha, A,lda, offsetA, B,ldb,offsetB+optN, beta, C,ldc,offsetC+optN,q);
     }
-    cl_event lastEvt = temp.waitEvents[temp.num_events-1];
-    delete[] temp.waitEvents;
     return lastEvt;
 }
 
@@ -1027,7 +993,7 @@ cl_event RaijinGemm<T>::applyOpt(enum RAIJIN_ORDER order, bool transA, bool tran
         cl_mem C, cl_uint ldc, cl_command_queue q){
     //cout<<"Entering applyOpt "<<M<<" "<<N<<" "<<K<<endl;
     return raijinApplyOpt<T>(optcompiled,optkernel,ctx,dvc,
-                          order,transA,transB,M,N,K,alpha,A,lda,B,ldb,beta,C,ldc,params,transObj,copyObj,scaleObj);
+                          order,transA,transB,M,N,K,alpha,A,lda,B,ldb,beta,C,ldc,q,transObj,copyObj,scaleObj);
 
 }
 

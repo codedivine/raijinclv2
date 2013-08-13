@@ -1269,10 +1269,6 @@ RaijinScale *scaleObj,bool verify=true){
     clEnqueueWriteBuffer(q, bufB, CL_TRUE, 0, size, ptrB, 0, NULL, NULL);
     clEnqueueWriteBuffer(q, bufC, CL_TRUE, 0, size, ptrC, 0, NULL, NULL);
     clFlush( q);
-    RaijinParams params;
-    params.num_events = 0;
-    params.waitEvents = NULL;
-    params.queue = q;
     const int niters = 3;
     double tdiff = 0;
     for(int i=0;i<niters;i++){
@@ -1285,7 +1281,7 @@ RaijinScale *scaleObj,bool verify=true){
         beta.s[0] = 0;
         beta.s[1] = 0;
         cl_event evt = raijinApplyOpt<ctype>(krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N,N,N,
-                                                    alpha,bufA,N,bufB,N,beta,bufC,N,params,transObj,copyObj,scaleObj);
+                                                    alpha,bufA,N,bufB,N,beta,bufC,N,q,transObj,copyObj,scaleObj);
         clFinish(q);
         rt.stop();
         if(i>0){
