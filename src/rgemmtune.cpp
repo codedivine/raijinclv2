@@ -1331,9 +1331,11 @@ double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, R
 	for(int i=0;i<niters;i++){
 		RTimer rt;
 		rt.start();
-        cl_event evt = raijinApplyOpt<realtype>(krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N,N,N,1,
-                                                bufA,N,bufB,N,0,bufC,N,q,transObj,copyObj,scaleObj);
+		RaijinCleaner *cleaner = new RaijinCleaner;
+        cl_event evt = raijinApplyOpt<realtype>(q,cleaner,krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N,N,N,1,
+                                                bufA,N,bufB,N,0,bufC,N,transObj,copyObj,scaleObj);
 		clWaitForEvents(1,&evt);
+		delete cleaner;
 		rt.stop();
 		if(i>0) tdiff += rt.getDiff();
 	}
@@ -1391,6 +1393,8 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
     bool storeB[] = {true, false};
 	bool useImageA[] = {true,false};
 	bool useImageB[] = {true,false};
+	bool imgA[] = {true,false};
+	bool imgB[] = {true,false};
 	bool initialized = false;
 	//double tbest = 0.0;
 	string prgmbest;
@@ -1401,24 +1405,23 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
     clGetDeviceInfo(dvc,CL_DEVICE_TYPE,sizeof(dvctype),&dvctype,NULL);
     clGetDeviceInfo(dvc,CL_DEVICE_LOCAL_MEM_SIZE,sizeof(lmemSize),&lmemSize,NULL);
 	clGetDeviceInfo(dvc,CL_DEVICE_LOCAL_MEM_TYPE,sizeof(ltype),&ltype,NULL);
+
     cl_uint vecWidth;
     if(T::isDouble()) clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE,sizeof(cl_uint),&vecWidth,NULL);
     else clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT,sizeof(cl_uint),&vecWidth,NULL);
-	bool imgA[] = {true,false};
-	bool imgB[] = {true,false};
+
+	const int minImgIdx = (dvctype==CL_DEVICE_TYPE_GPU) ? 0 : 1;
+	const int minLmemIdx = (ltype==CL_LOCAL) ? 0 : 1;
+
     for (int i = 5; i < 7; i++) {
         for (int j = 1; j < 4; j++) {
             for (int simdidx = 0; simdidx < 3;simdidx++) {
                 for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
-                    for(int sa = 0 ; sa<2; sa++){
-                        for(int sb = 0; sb <2 ; sb++){
-                            for(int imgAidx=0;imgAidx<2;imgAidx++){
-                                for(int imgBidx=0;imgBidx<2;imgBidx++){
-
-
-
+                    for(int sa = minLmemIdx ; sa<2; sa++){
+                        for(int sb = minLmemIdx; sb<2 ; sb++){
+                            for(int imgAidx=minImgIdx; imgAidx<2; imgAidx++){
+                                for(int imgBidx=minImgIdx; imgBidx<2; imgBidx++){
 									int ktile = ktiles[ktileidx];
-
 									const int unr = ktile;
 									//cout<<s<<" "<<bfidx<<" "<<splits[s]<<" "<<bfirsts[bfidx]<<endl;
 									bool isAggregate = false;
@@ -1429,11 +1432,11 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 									bool useImageB = imgB[imgBidx];
                                     bool transA = true;
                                     bool transB = false;
-                                    if(dvctype!=CL_DEVICE_TYPE_GPU && (useImageA || useImageB)) continue;
-                                    if(ltype!=CL_LOCAL && (storeA[sa] || storeB[sb])) continue;
 
 									string body;
 									const int simd = simdwidths[simdidx];
+									if(simd>vecWidth) continue;
+
                                     //if(dvctype==CL_DEVICE_TYPE_CPU && simd!=vecWidth) continue;
                                     if(dvctype==CL_DEVICE_TYPE_GPU){
                                         if(T::isDouble() && simd>2) continue;

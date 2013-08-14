@@ -175,9 +175,11 @@ static void testGemmComplex(cl_device_id dvc,unsigned int N,bool transA,bool tra
         ctype beta;
         beta.s[0] = 0;
         beta.s[1] = 0;
-        cl_event evt = gemm->apply(RaijinCL::RaijinRowMajor,transA,transB,N,N,N,
-                                                    alpha,bufA,N,0,bufB,N,0,beta,bufC,N,0,q);
+		RaijinCleaner *cleaner;
+        cl_event evt = gemm->apply(q,&cleaner,RaijinCL::RaijinRowMajor,transA,transB,N,N,N,
+                                                    alpha,bufA,N,0,bufB,N,0,beta,bufC,N,0);
         clWaitForEvents(1,&evt);
+		if(cleaner!=NULL) delete cleaner;
         rt.stop();
         if(i>0) tdiff += rt.getDiff();
         cout<<"Time "<<rt.getDiff()<<endl;
@@ -271,14 +273,16 @@ void testGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
     for(int i=0;i<niters;i++){
         RTimer rt;
         rt.start();
-        cl_event evt = gemm->apply(RaijinRowMajor,transA,transB,
+		RaijinCleaner *cleaner;
+        cl_event evt = gemm->apply(q,&cleaner,RaijinRowMajor,transA,transB,
                                    M,N,K,
                                    1,bufA,K,0,
                                    bufB,N,0,
                                    0,
-                                   bufC,N,0,q);
+                                   bufC,N,0);
         clFlush(q);
         clFinish(q);
+		if(cleaner!=NULL) delete cleaner;
         rt.stop();
 		cout<<"Time "<<rt.getDiff()<<endl;
         if(i>1)

@@ -1280,9 +1280,11 @@ RaijinScale *scaleObj,bool verify=true){
         ctype beta;
         beta.s[0] = 0;
         beta.s[1] = 0;
-        cl_event evt = raijinApplyOpt<ctype>(krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N,N,N,
-                                                    alpha,bufA,N,bufB,N,beta,bufC,N,q,transObj,copyObj,scaleObj);
+		RaijinCleaner *cleaner = new RaijinCleaner;
+        cl_event evt = raijinApplyOpt<ctype>(q,cleaner,krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N,N,N,
+                                                    alpha,bufA,N,bufB,N,beta,bufC,N,transObj,copyObj,scaleObj);
         clFinish(q);
+		delete cleaner;
         rt.stop();
         if(i>0){
             tdiff += rt.getDiff();

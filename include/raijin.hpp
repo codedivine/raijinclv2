@@ -252,6 +252,8 @@ struct TileSpace{
 	std::vector<int> kvals;
 };
 
+
+
 struct ExecBufs{
     ~ExecBufs();
 	std::vector<cl_mem> memobj;
@@ -278,6 +280,13 @@ bool transA,transB;
 RaijinGemmOptKernel optparams;
 int msize;
 static void deleteGemmPlan(cl_event evt,cl_int status,void *vplan);
+};
+
+struct RaijinCleaner{
+	std::vector<cl_mem> bufs;
+	RaijinGemmPlan *plan;
+	RaijinCleaner():plan(NULL){}
+	~RaijinCleaner();
 };
 
 
@@ -441,6 +450,7 @@ RaijinGemmPlan *raijinGetGemmPlan(RaijinGemmOptKernel optparams,
 template <typename T>
 bool raijinGemmExecCopy(RaijinGemmPlan *plan,
                         cl_command_queue q,
+						RaijinCleaner *cleaner,
                         cl_mem bufA,
                         cl_mem bufB,
                         cl_mem bufC,
@@ -566,7 +576,7 @@ cl_float2 raijinGetOne();
 
 
 template <typename T>
-cl_event raijinApplyOpt(cl_kernel krnl,
+cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krnl,
                         RaijinGemmOptKernel optparams,
                         cl_context ctx,
                         cl_device_id dvc,
@@ -584,7 +594,7 @@ cl_event raijinApplyOpt(cl_kernel krnl,
                         T beta,
                         cl_mem C,
                         cl_uint ldc,
-                        cl_command_queue q,RaijinTranspose *transObj,RaijinCopy *copyObj,RaijinScale *scaleObj){
+                        RaijinTranspose *transObj,RaijinCopy *copyObj,RaijinScale *scaleObj){
 	using namespace std;
                            //cout<<"Inside applyOpt"<<endl;
     const size_t elemsize = sizeof(T);
@@ -622,8 +632,9 @@ cl_event raijinApplyOpt(cl_kernel krnl,
     cl_uint curEventIndex = 0;*/
 
 	RaijinGemmPlan *plan = raijinGetGemmPlan<T>(optparams,ctx,dvc,order,transA,transB,M,N,K,lda,ldb,msize);
+	cleaner->plan = plan;
     cl_event copyEvt=NULL;
-    raijinGemmExecCopy<T>(plan,q,A,B,C,ldc,true,true,&copyEvt,transObj,copyObj,scaleObj);
+    raijinGemmExecCopy<T>(plan,q,cleaner,A,B,C,ldc,true,true,&copyEvt,transObj,copyObj,scaleObj);
 
     const int imax = plan->tiles.ivals.size()-1;
     const int jmax = plan->tiles.jvals.size()-1;
@@ -715,8 +726,7 @@ cl_event raijinApplyOpt(cl_kernel krnl,
             //cout<<curEventIndex<<endl;
 
 			//TODO: Need to put these on a resource cleaner somewhere?
-            cl_mem *Cnewcopy = new cl_mem;
-            *Cnewcopy = Cnew;
+			cleaner->bufs.push_back(Cnew);
             //clSetEventCallback(events[curEventIndex-1],CL_COMPLETE,releaseMemObject,(void *)Cnewcopy);
             //clReleaseMemObject(Cnew);
         }
@@ -729,11 +739,11 @@ template <typename T>
 class RaijinGemm{
 public:
     static RaijinGemm<T> *getInstance(cl_context ctx,cl_device_id dvc);
-    cl_event apply(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+    cl_event apply(cl_command_queue q, RaijinCleaner **cleaner, enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
             T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
             cl_mem B, cl_uint ldb, cl_uint offsetB,
             T beta,
-            cl_mem C, cl_uint ldc, cl_uint offsetC, cl_command_queue q);
+            cl_mem C, cl_uint ldc, cl_uint offsetC);
     ~RaijinGemm();
 private:
     RaijinTranspose *transObj;
@@ -741,16 +751,16 @@ private:
     RaijinCopy *copyObj;
     RaijinGemm();
     RaijinGemm(const RaijinGemm&);
-    cl_event applyGen(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+    cl_event applyGen(cl_command_queue q,RaijinCleaner *cleaner, enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
             T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
             cl_mem B, cl_uint ldb, cl_uint offsetB,
             T beta,
-            cl_mem C, cl_uint ldc, cl_uint offsetC, cl_command_queue q);
-    cl_event applyOpt(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+            cl_mem C, cl_uint ldc, cl_uint offsetC);
+    cl_event applyOpt( cl_command_queue q, RaijinCleaner *cleaner,enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
             T alpha, cl_mem A, cl_uint lda,
             cl_mem B, cl_uint ldb,
             T beta,
-            cl_mem C, cl_uint ldc, cl_command_queue q);
+            cl_mem C, cl_uint ldc);
     RaijinGemmOptKernel optkernel;
     cl_context ctx;
     cl_device_id dvc;
@@ -836,11 +846,11 @@ RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context context,cl_device_id device
 }
 
 template <typename T>
-cl_event RaijinGemm<T>::applyGen(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+cl_event RaijinGemm<T>::applyGen(cl_command_queue q, RaijinCleaner *cleaner,enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
         T alpha, cl_mem A, cl_uint lda, unsigned int offsetA,
         cl_mem B, cl_uint ldb, unsigned int offsetB,
         T beta,
-        cl_mem C, cl_uint ldc, unsigned int offsetC, cl_command_queue q){
+        cl_mem C, cl_uint ldc, unsigned int offsetC){
     //cout<<"Entering applyGen "<<M<<" "<<N<<" "<<K<<endl;
     const size_t elemsize = sizeof(T);
     cl_kernel krnl = gencompiled;
@@ -893,19 +903,19 @@ cl_event RaijinGemm<T>::applyGen(enum RAIJIN_ORDER order, bool transA, bool tran
 }
 
 template <typename T>
-cl_event RaijinGemm<T>::apply(enum RAIJIN_ORDER order, bool transA, bool transB,  cl_uint M, cl_uint N, cl_uint K,
+cl_event RaijinGemm<T>::apply(cl_command_queue q,RaijinCleaner **cleaner,enum RAIJIN_ORDER order, bool transA, bool transB,  cl_uint M, cl_uint N, cl_uint K,
         T alpha, cl_mem A, cl_uint lda, cl_uint offsetA,
         cl_mem B, cl_uint ldb, cl_uint offsetB,
         T beta,
-        cl_mem C, cl_uint ldc, cl_uint offsetC, cl_command_queue q){
+        cl_mem C, cl_uint ldc, cl_uint offsetC){
     //cout<<"Entering apply"<<endl;
     const int elemsize = sizeof(T);
     if(order==RaijinColMajor){
         //untested
-        return apply(RaijinRowMajor,transA,transB,N,M,K,alpha,B,ldb,offsetB,A,lda,offsetA,beta,C,ldc,offsetC,q);
+        return apply(q,cleaner,RaijinRowMajor,transA,transB,N,M,K,alpha,B,ldb,offsetB,A,lda,offsetA,beta,C,ldc,offsetC);
     }
 
-
+	*cleaner = new RaijinCleaner;
     cl_mem optA,optB,optC;
     int optM,optN,optK;
     optM = M - M%(optkernel.htile*optkernel.lsizex);
@@ -940,7 +950,7 @@ cl_event RaijinGemm<T>::apply(enum RAIJIN_ORDER order, bool transA, bool transB,
             optC = C;
         }
 
-        lastEvt = applyOpt(order,transA,transB,optM,optN,optK,alpha,optA,lda,optB,ldb,beta,optC,ldc,q);
+        lastEvt = applyOpt(q,*cleaner,order,transA,transB,optM,optN,optK,alpha,optA,lda,optB,ldb,beta,optC,ldc);
         if(offsetA>0) clReleaseMemObject(optA);
         if(offsetB>0) clReleaseMemObject(optB);
         if(offsetC>0) clReleaseMemObject(optC);
@@ -950,20 +960,20 @@ cl_event RaijinGemm<T>::apply(enum RAIJIN_ORDER order, bool transA, bool transB,
     if(K>optK){
         //cout<<"Remaining K"<<endl;
         int remK = K - optK;
-        lastEvt = applyGen(order,transA,transB,optM,optN,remK,alpha,A,lda, offsetA+optK, B,ldb,offsetB+optK*ldb, beta, C,ldc,offsetC,q);
+        lastEvt = applyGen(q,*cleaner,order,transA,transB,optM,optN,remK,alpha,A,lda, offsetA+optK, B,ldb,offsetB+optK*ldb, beta, C,ldc,offsetC);
     }
 
     //Calculate the (M-optM) remaining rows of C
     if(M>optM){
         //cout<<"Remaining M"<<endl;
         int remM = M- optM;
-        lastEvt = applyGen(order,transA,transB,remM,N,K,alpha, A,lda, offsetA+optM*lda, B,ldb,offsetB, beta, C,ldc,offsetC+optM*ldc,q);
+        lastEvt = applyGen(q,*cleaner,order,transA,transB,remM,N,K,alpha, A,lda, offsetA+optM*lda, B,ldb,offsetB, beta, C,ldc,offsetC+optM*ldc);
     }
 
     if(N>optN){
         //cout<<"Remaining N"<<endl;
         int remN = N- optN;
-        lastEvt = applyGen(order,transA,transB, M,remN,K,alpha, A,lda, offsetA, B,ldb,offsetB+optN, beta, C,ldc,offsetC+optN,q);
+        lastEvt = applyGen(q,*cleaner,order,transA,transB, M,remN,K,alpha, A,lda, offsetA, B,ldb,offsetB+optN, beta, C,ldc,offsetC+optN);
     }
     return lastEvt;
 }
@@ -986,14 +996,14 @@ RaijinGemm<T>::~RaijinGemm(){
 }
 
 template <typename T>
-cl_event RaijinGemm<T>::applyOpt(enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
+cl_event RaijinGemm<T>::applyOpt(cl_command_queue q, RaijinCleaner *cleaner, enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
         T alpha, cl_mem A, cl_uint lda,
         cl_mem B, cl_uint ldb,
         T beta,
-        cl_mem C, cl_uint ldc, cl_command_queue q){
+        cl_mem C, cl_uint ldc){
     //cout<<"Entering applyOpt "<<M<<" "<<N<<" "<<K<<endl;
-    return raijinApplyOpt<T>(optcompiled,optkernel,ctx,dvc,
-                          order,transA,transB,M,N,K,alpha,A,lda,B,ldb,beta,C,ldc,q,transObj,copyObj,scaleObj);
+    return raijinApplyOpt<T>(q,cleaner,optcompiled,optkernel,ctx,dvc,
+                          order,transA,transB,M,N,K,alpha,A,lda,B,ldb,beta,C,ldc,transObj,copyObj,scaleObj);
 
 }
 

@@ -260,3 +260,8 @@ void RaijinGemmPlan::deleteGemmPlan(cl_event evt, cl_int status, void *vplan){
     RaijinGemmPlan *plan = (RaijinGemmPlan*)vplan;
     delete plan;
 }
+
+RaijinCleaner::~RaijinCleaner(){
+	for(int i=0;i<bufs.size();i++) clReleaseMemObject(bufs[i]);
+	if(plan!=NULL) delete plan;
+}
