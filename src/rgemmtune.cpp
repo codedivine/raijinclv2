@@ -1408,6 +1408,14 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
     clGetDeviceInfo(dvc,CL_DEVICE_LOCAL_MEM_SIZE,sizeof(lmemSize),&lmemSize,NULL);
 	clGetDeviceInfo(dvc,CL_DEVICE_LOCAL_MEM_TYPE,sizeof(ltype),&ltype,NULL);
 
+	cl_uint maxNumDims;
+	clGetDeviceInfo(dvc,CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS,sizeof(maxNumDims),&maxNumDims,NULL);
+	size_t *maxWorkDims = new size_t[maxNumDims];
+	clGetDeviceInfo(dvc,CL_DEVICE_MAX_WORK_ITEM_SIZES,sizeof(size_t)*maxNumDims,maxWorkDims,NULL);
+	size_t maxGroupSize;
+	clGetDeviceInfo(dvc,CL_DEVICE_MAX_WORK_GROUP_SIZE,sizeof(size_t),&maxGroupSize,NULL);
+
+
     cl_uint vecWidth;
     if(T::isDouble()) clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE,sizeof(cl_uint),&vecWidth,NULL);
     else clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT,sizeof(cl_uint),&vecWidth,NULL);
@@ -1451,6 +1459,10 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 										int lx, ly;
 										lx = lsizesX[j];
 										ly = lsizesY[j];
+										if(lx*ly>maxGroupSize) continue;
+										if(lx>maxWorkDims[1]) continue;
+										if(ly>maxWorkDims[0]) continue;
+
 										bool transA,transB,kernSuc;
 										string body;
 
@@ -1492,15 +1504,33 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 											transB = false;
 											break;
 										}
-										//clGetDeviceInfo(dvc,CL_KERNEL_PREFERRED_WORK_GROUP_MULTIPLE,
-
 										if(!kernSuc) continue;
-
 
 										//cout<<body<<endl;
 										stringstream kernelstream;
 										stringstream namestream;
-										namestream << T::gemmName() << i << "_" << j << "_" << simdidx << "_" << ktileidx << "_" << sa << "_" <<sb<<"_"<<imgAidx<<"_"<<imgBidx;
+										string codeletStr;
+										switch(codelet){
+										case TNOff:
+											codeletStr = "TNO";
+											break;
+										case TNCons:
+											codeletStr = "TNC";
+											break;
+										case NNOff:
+											codeletStr = "NNO";
+											break;
+										case NNCons:
+											codeletStr = "NNC";
+											break;
+										case NTOff:
+											codeletStr = "NTO";
+											break;
+										case NTCons:
+											codeletStr = "NTC";
+											break;
+										}
+										namestream << T::gemmName() << codeletStr<< i << "_" << j << "_" << simdidx << "_" << ktileidx << "_" << sa << "_" <<sb<<"_"<<imgAidx<<"_"<<imgBidx;
 										string kname = namestream.str();
 										if(T::isDouble()) kernelstream<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
 										if(simd==1) kernelstream<<"typedef "<<dtype<<" "<<dtype<<"1;"<<endl;
@@ -1597,6 +1627,7 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 		}
 	}
 	clReleaseCommandQueue(q);
+	delete[] maxWorkDims;
     delete scaleObj;
     delete transObj;
     delete copyObj;
