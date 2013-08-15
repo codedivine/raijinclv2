@@ -178,7 +178,7 @@ static void testGemmComplex(cl_device_id dvc,unsigned int N,bool transA,bool tra
 		RaijinCleaner *cleaner;
         cl_event evt = gemm->apply(q,&cleaner,RaijinCL::RaijinRowMajor,transA,transB,N,N,N,
                                                     alpha,bufA,N,0,bufB,N,0,beta,bufC,N,0);
-        clWaitForEvents(1,&evt);
+        clFinish(q);
 		if(cleaner!=NULL) delete cleaner;
         rt.stop();
         if(i>0) tdiff += rt.getDiff();
@@ -280,7 +280,7 @@ void testGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
                                    bufB,N,0,
                                    0,
                                    bufC,N,0);
-        clFlush(q);
+        //clFlush(q);
         clFinish(q);
 		if(cleaner!=NULL) delete cleaner;
         rt.stop();

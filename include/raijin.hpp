@@ -602,40 +602,13 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
     clGetDeviceInfo(dvc,CL_DEVICE_TYPE,sizeof(dvctype),&dvctype,NULL);
     const int msize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024:8192;
     
-	//cl_event scaleEvt = raijinScale<T>(scaleObj,params,C,M,N,ldc,beta);
-
-
-    /*RaijinGemmPlan *plan = raijinGetGemmPlan<T>(optparams,ctx,dvc,order,transA,transB,M,N,K,lda,ldb,msize);
-    cl_event copyEvt=NULL;
-    RaijinParams copyParams;
-    copyParams.num_events = 1;
-    copyParams.waitEvents = &scaleEvt;
-    copyParams.queue = params.queue;
-    raijinGemmExecCopy<T>(plan,copyParams,A,B,C,ldc,true,true,&copyEvt,transObj,copyObj,scaleObj);
-
-
-    const int imax = plan->tiles.ivals.size()-1;
-    const int jmax = plan->tiles.jvals.size()-1;
-    const int kmax = plan->tiles.kvals.size()-1;
-
-    std::vector<cl_event> events(imax*jmax*kmax);
-    cl_event *waitList;
-    if(copyEvt==NULL) {
-        //cout<<"raijinApplyOpt: Waitliset set to scale"<<endl;
-        waitList = &scaleEvt;
-    }
-    else {
-        //cout<<"raijinApplyOpt: Waitliset set to copy"<<endl;
-        waitList = &copyEvt;
-    }
-    cl_uint numEvents = 1;
-    cl_uint curEventIndex = 0;*/
+	cl_event scaleEvt = raijinScale<T>(scaleObj,q,C,M,N,ldc,beta);
 
 	RaijinGemmPlan *plan = raijinGetGemmPlan<T>(optparams,ctx,dvc,order,transA,transB,M,N,K,lda,ldb,msize);
 	cleaner->plan = plan;
     cl_event copyEvt=NULL;
     raijinGemmExecCopy<T>(plan,q,cleaner,A,B,C,ldc,true,true,&copyEvt,transObj,copyObj,scaleObj);
-
+	clFlush(q);
     const int imax = plan->tiles.ivals.size()-1;
     const int jmax = plan->tiles.jvals.size()-1;
     const int kmax = plan->tiles.kvals.size()-1;
@@ -716,8 +689,8 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
                 cl_int errcode = clEnqueueNDRangeKernel(q, krnl, 2,NULL, gsize, lsize,0, NULL, &evt);
 				lastEvt = evt;
 				if(errcode!=CL_SUCCESS){
-					cout<<"applyRegionOpt: "<<kcode0<<" "<<kcode1<<" "<<kcode2<<" "<<kcode3<<" "<<kcode4<<" "<<kcode5<<" "<<kcode6<<" "<<kcode7<<" "<<kcode8<<endl;
-					cout<<"applyRegionOpt: return code "<<errcode<<endl;
+					std::cout<<"applyRegionOpt: "<<kcode0<<" "<<kcode1<<" "<<kcode2<<" "<<kcode3<<" "<<kcode4<<" "<<kcode5<<" "<<kcode6<<" "<<kcode7<<" "<<kcode8<<std::endl;
+					std::cout<<"applyRegionOpt: return code "<<errcode<<std::endl;
 				}
                 //clWaitForEvents(1,&events[curEventIndex]);
                 //cout<<"Finished dispatching this iteration"<<endl;

@@ -197,10 +197,7 @@ bool genKernelTNOff(int lsizex,
 					ss << "A[(k+kk+"<<y<<")*(lda/simdwidth)+ (get_group_id(1)*(htile/simdwidth)+"<<x<<")*lx + lidx];"<<endl;
 				}
 			}
-		}
-	}
-	for (int x = 0; x < htile/simdwidth; x++) {
-		for(int y=0;y<ktile;y++){
+	
             for(int xoff=0;xoff<simdwidth;xoff++){
                     int row = x*simdwidth + xoff;
                     for(int w=0;w<wtile/simdwidth; w++){
@@ -1324,7 +1321,7 @@ double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, R
 	clEnqueueWriteBuffer(q, bufA, CL_TRUE, 0, size, ptrA, 0, NULL, NULL);
 	clEnqueueWriteBuffer(q, bufB, CL_TRUE, 0, size, ptrB, 0, NULL, NULL);
 	clEnqueueWriteBuffer(q, bufC, CL_TRUE, 0, size, ptrC, 0, NULL, NULL);
-	clFlush( q);
+	clFinish(q);
 	const int niters = 3;
 	double tdiff = 0;
 	for(int i=0;i<niters;i++){
@@ -1333,7 +1330,7 @@ double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, R
 		RaijinCleaner *cleaner = new RaijinCleaner;
         cl_event evt = raijinApplyOpt<realtype>(q,cleaner,krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N,N,N,1,
                                                 bufA,N,bufB,N,0,bufC,N,transObj,copyObj,scaleObj);
-		clWaitForEvents(1,&evt);
+		clFinish(q);
 		delete cleaner;
 		rt.stop();
 		if(i>0) tdiff += rt.getDiff();
@@ -1422,11 +1419,12 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 
 	const int minImgIdx = (dvctype==CL_DEVICE_TYPE_GPU) ? 0 : 1;
 	const int minLmemIdx = (ltype==CL_LOCAL) ? 0 : 1;
+	//const int minLmemIdx = 1;
 
-    for (int i = 1; i < 4; i++) {
-        for (int j = 0; j < 5; j++) {
-            for (int simdidx = 2; simdidx < 4;simdidx++) {
-                for (int ktileidx = 3; ktileidx < 6; ktileidx++) {
+    for (int i = 3; i < 7; i++) {
+        for (int j = 1; j < 5; j++) {
+            for (int simdidx = 0; simdidx < 3;simdidx++) {
+                for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
                     for(int sa = minLmemIdx ; sa<2; sa++){
                         for(int sb = minLmemIdx; sb<2 ; sb++){
                             for(int imgAidx=minImgIdx; imgAidx<2; imgAidx++){
