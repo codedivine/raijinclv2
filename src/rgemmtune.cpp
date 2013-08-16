@@ -12,6 +12,7 @@ using namespace RaijinCL;
 
 //#define AMD_BUG
 
+#define OUTER_TILE_SIZE 64
 
 bool genKernelTNOff(int lsizex,
                          int lsizey,
@@ -1135,7 +1136,7 @@ static bool genKernelNTCons(int lsizex, int lsizey, int htile, int wtile, int kt
     }
 	if(isAggregate){
 		ss<<"unsigned int kouter;"<<endl;
-		ss<<"for(kouter=0;kouter<K/simdwidth;kouter+=(128/simdwidth)){"<<endl;
+		ss<<"for(kouter=0;kouter<K/simdwidth;kouter+=("<<OUTER_TILE_SIZE<<"/simdwidth)){"<<endl;
 		ss<<"for(i=ig*lx;i<(ig+1)*lx;i++){"<<endl;
 		ss<<"for(j=jg*ly;j<(jg+1)*ly;j++){"<<endl;
 	}
@@ -1146,7 +1147,7 @@ static bool genKernelNTCons(int lsizex, int lsizey, int htile, int wtile, int kt
     }
     ss<<"const unsigned int ldbs = ldb/simdwidth;\n";
     ss<<"const unsigned int ldas = lda/simdwidth;\n";
-	if(isAggregate) ss<<"for(k=kouter;k<(kouter+(128/simdwidth));k+=(ktile/simdwidth)){"<<endl;
+	if(isAggregate) ss<<"for(k=kouter;k<(kouter+("<<OUTER_TILE_SIZE<<"/simdwidth));k+=(ktile/simdwidth)){"<<endl;
 	else ss<<"for(k=0;k<K/simdwidth;k+=(ktile/simdwidth)){"<<endl;
     if(storea){
         ss<<"const int gstartxA = get_group_id(1)*htile*lx;\n";
@@ -1395,8 +1396,8 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 	int wtiles[] = {2,4,2,4,4,8,8,4,16};
     int ktiles[] = {1,2,4,8,16,32};
 	int simdwidths[] = {1,2,4,8};
-	int lsizesX[] = {4,8,4,16,16};
-	int lsizesY[] = {8,8,16,4,16};
+	int lsizesX[] = {2,2,4,4,4,8,8,4,16,16};
+	int lsizesY[] = {2,4,2,4,8,4,8,16,4,16};
 	int unrolls[] = {1,2,4,8};
     bool storeA[] = {true, false};
     bool storeB[] = {true, false};
@@ -1435,224 +1436,228 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 	//const int minLmemIdx = 1;
 
     for (int i = 1; i < 7; i++) {
-        for (int j = 0; j < 5; j++) {
-            for (int simdidx = 2; simdidx < 4;simdidx++) {
-                for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
-                    for(int sa = minLmemIdx ; sa<2; sa++){
-                        for(int sb = minLmemIdx; sb<2 ; sb++){
-                            for(int imgAidx=minImgIdx; imgAidx<2; imgAidx++){
-								for(int imgBidx=minImgIdx; imgBidx<2; imgBidx++){
-									for(int codelet=0;codelet<6;codelet++){
-										int ktile = ktiles[ktileidx];
-										const int unr = ktile;
-										//cout<<s<<" "<<bfidx<<" "<<splits[s]<<" "<<bfirsts[bfidx]<<endl;
-										bool isAggregate = false;
-										bool storec = false;
-										int htile = htiles[i];
-										int wtile = wtiles[i];
-										bool useImageA = imgA[imgAidx];
-										bool useImageB = imgB[imgBidx];
-										const int simd = simdwidths[simdidx];
-										//if(simd>vecWidth) continue;
-
-										//if(dvctype==CL_DEVICE_TYPE_CPU && simd!=vecWidth) continue;
-										if(dvctype==CL_DEVICE_TYPE_GPU){
-											if(T::isDouble() && simd>2) continue;
-											else if(!(T::isDouble()) && simd>4) continue;
-											if(codelet!=TNOff) continue;
-										}
-
-										if(dvctype==CL_DEVICE_TYPE_CPU || dvctype==CL_DEVICE_TYPE_ACCELERATOR){
-											if(codelet!=NTCons) continue;
-											isAggregate = true;
-										}
-
-										//int regest = (htile * wtile + htile * simd * u + wtile * simd * u);
-
-										string dtype = T::name();
-										int lx, ly;
-										lx = lsizesX[j];
-										ly = lsizesY[j];
-										if(lx*ly>maxGroupSize) continue;
-										if(lx>maxWorkDims[1]) continue;
-										if(ly>maxWorkDims[0]) continue;
-
-										bool transA,transB,kernSuc;
-										string body;
-
-										switch(codelet){
-										case TNCons:
-											kernSuc = genKernelTNCons(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
-												,1,body,useImageA,useImageB);
-											transA = true;
-											transB = false;
-											break;
-										case TNOff:
-											kernSuc = genKernelTNOff(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
-												,1,body,useImageA,useImageB);
-											transA = true;
-											transB = false;
-											break;
-										case NTCons:
-											kernSuc = genKernelNTCons(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
-												,1,body,useImageA,useImageB,isAggregate);
-											transA = false;
-											transB = true;
-											break;
-										case NTOff:
-											kernSuc = genKernelNTOff(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
-												,1,body,useImageA,useImageB);
-											transA = false;
-											transB = true;
-											break;
-										case NNCons:
-											kernSuc = genKernelNNCons(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
-												,1,body,useImageA,useImageB);
-											transA = false;
-											transB = false;
-											break;
-										case NNOff:
-											kernSuc = genKernelNNOff(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
-												,1,body,useImageA,useImageB);
-											transA = false;
-											transB = false;
-											break;
-										}
-										if(!kernSuc) continue;
-
-										//cout<<body<<endl;
-										stringstream kernelstream;
-										stringstream namestream;
-										string codeletStr;
-										switch(codelet){
-										case TNOff:
-											codeletStr = "TNO";
-											break;
-										case TNCons:
-											codeletStr = "TNC";
-											break;
-										case NNOff:
-											codeletStr = "NNO";
-											break;
-										case NNCons:
-											codeletStr = "NNC";
-											break;
-										case NTOff:
-											codeletStr = "NTO";
-											break;
-										case NTCons:
-											codeletStr = "NTC";
-											break;
-										}
-										namestream << T::gemmName() << codeletStr<< i << "_" << j << "_" << simdidx << "_" << ktileidx << "_" << sa << "_" <<sb<<"_"<<imgAidx<<"_"<<imgBidx;
-										string kname = namestream.str();
-										if(T::isDouble()) kernelstream<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
-										if(simd==1) kernelstream<<"typedef "<<dtype<<" "<<dtype<<"1;"<<endl;
-										//kernelstream << "__attribute((reqd_work_group_size(" << lsizesY[j] << "," << lsizesX[j] << ",1)))";
-										if(useImageA || useImageB){
-											kernelstream<<"__constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;"<<endl;
-											kernelstream<<"float4 myread_imagef(__read_only image2d_t img,int2 pos){ return read_imagef(img,sampler,pos);\n}"<<endl;
-										}
-										kernelstream<<"__kernel ";
-										if(isAggregate){
-											kernelstream<<"__attribute__((reqd_work_group_size(1,1,1))) "<<endl;
-										}else{
-											kernelstream<<"__attribute__((reqd_work_group_size("<<ly<<","<<lx<<",1))) "<<endl;
-										}
-										kernelstream << "void " << kname;
-										kernelstream << body;
-										string kernelsrc = kernelstream.str();
-										string klogname = kname +".cl";
-										ofstream klog(klogname.c_str());
-										klog<<kernelsrc<<endl;
-										klog.close();
-										const size_t len = kernelsrc.length();
-										cl_int errcode1, errcode2;
-										RTimer rt1, rt2, rt3;
-										rt1.start();
-										const char *srcbuf = kernelsrc.c_str();
-										cl_program prg = clCreateProgramWithSource(ctx, 1, &srcbuf, (const size_t*) &len, &errcode1);
-										cl_int bldcode = clBuildProgram(prg, 1, &dvc, "", NULL, NULL);
-										cl_kernel krnl = clCreateKernel(prg, kname.c_str(), &errcode2);
-										rt1.stop();
-										cout<<"Compile time "<<rt1.getDiff()<<endl;
-										if (errcode1 != CL_SUCCESS || errcode2 != CL_SUCCESS || bldcode != CL_SUCCESS) {
-											/*cl::Program prgmcpp(prg);
-											const cl::Device dvccpp(dvc);
-											string buildlog = prgmcpp.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dvccpp);
-											cout<<buildlog<<endl;*/
-											size_t retbytes;
-											cout << "Error creating program from source " << errcode1 << " " << errcode2 << " " << bldcode << endl;
-											clGetProgramBuildInfo(prg, dvc, CL_PROGRAM_BUILD_LOG, 0, NULL, &retbytes);
-											char *buildlog = new char[retbytes+1];
-											clGetProgramBuildInfo(prg,dvc,CL_PROGRAM_BUILD_LOG,retbytes,buildlog,NULL);
-											cout << "Buildlog " << retbytes<<" "<<buildlog << endl;
-											//cout << "Error creating program from source " << errcode1 << " " << errcode2 << " " << bldcode << endl;
-											cout << kernelsrc << endl;
-											exit(-1);
-											continue;
-
-										} else {
-											//string fname = kname+".cl";
-											//ofstream of(fname.c_str());
-											//of<<kernelsrc<<endl;
-											//of.close();
-											//cout<<"Time taken to compile "<<rt1.getDiff()<<endl;
-											RaijinGemmOptKernel candidate;
-											candidate.transA = transA;
-											candidate.transB = transB;
-											candidate.simdwidth = simd;
-											candidate.ktile = ktile;
-											if(isAggregate){
-												candidate.lsizex = 1;
-												candidate.lsizey = 1;
-												candidate.htile = htile*lx;
-												candidate.wtile = wtile*ly;
-											}else{
-												candidate.lsizex = lx;
-												candidate.lsizey = ly;
-												candidate.htile = htile;
-												candidate.wtile = wtile;
-											}
-											candidate.kernel = kernelsrc;
-											candidate.kname = kname;
-											candidate.imageA = useImageA;
-											candidate.imageB = useImageB;
-
-											double gflops;
-											size_t tuneSize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024 : 2048;
-											gflops = testGemm<T>(tuneSize, dvc, ctx, krnl,candidate,transObj,copyObj,scaleObj,true);
-
-											clReleaseKernel(krnl);
-											clReleaseProgram(prg);
-											double bwidth = (htile+wtile)*gflops*sizeof(realtype)/(2*htile*wtile);
-											cout<<"htile "<<htile<<" wtile "<<wtile<<" ktile "<<(ktile);
-											cout<<" lx "<<lx<<" ly "<<ly<<" simd "<<simd<<" storeA? "<<storeA[sa]<<" storeB? "<<storeB[sb];
-											cout<<" ImageA? "<<useImageA<<" ImageB? "<<useImageB<<endl;
-
-											if (!initialized || (gflops > (*gflopbest)) && (gflops < 2500)) {
-												*optparams = candidate;
-												*gflopbest = gflops;
-												initialized = true;
-											}
-											cout << "Gflops " << gflops << " Bwidth "<< bwidth<<" Best So Far "<<(*gflopbest)<<" "<<kname<<endl;
-
-										}
-									}
-								}
-							}
-						}
-					}
-				}
+      for (int j = 0; j < 4; j++) {
+	for (int simdidx = 2; simdidx < 4;simdidx++) {
+	  for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
+	    for(int sa = minLmemIdx ; sa<2; sa++){
+	      for(int sb = minLmemIdx; sb<2 ; sb++){
+		for(int imgAidx=minImgIdx; imgAidx<2; imgAidx++){
+		  for(int imgBidx=minImgIdx; imgBidx<2; imgBidx++){
+		    for(int codelet=0;codelet<6;codelet++){
+		      int ktile = ktiles[ktileidx];
+		      const int unr = ktile;
+		      //cout<<s<<" "<<bfidx<<" "<<splits[s]<<" "<<bfirsts[bfidx]<<endl;
+		      bool isAggregate = false;
+		      bool storec = false;
+		      int htile = htiles[i];
+		      int wtile = wtiles[i];
+		      bool useImageA = imgA[imgAidx];
+		      bool useImageB = imgB[imgBidx];
+		      const int simd = simdwidths[simdidx];
+		      //if(simd>vecWidth) continue;
+		      
+		      //if(dvctype==CL_DEVICE_TYPE_CPU && simd!=vecWidth) continue;
+		      if(dvctype==CL_DEVICE_TYPE_GPU){
+			if(T::isDouble() && simd>2) continue;
+			else if(!(T::isDouble()) && simd>4) continue;
+			if(codelet!=TNOff) continue;
+		      }
+		      
+		      if(dvctype==CL_DEVICE_TYPE_CPU || dvctype==CL_DEVICE_TYPE_ACCELERATOR){
+			if(codelet!=NTCons) continue;
+			isAggregate = true;
+		      }
+		      
+		      //int regest = (htile * wtile + htile * simd * u + wtile * simd * u);
+		      
+		      string dtype = T::name();
+		      int lx, ly;
+		      lx = lsizesX[j];
+		      ly = lsizesY[j];
+		      if(lx*ly>maxGroupSize) continue;
+		      if(lx>maxWorkDims[1]) continue;
+		      if(ly>maxWorkDims[0]) continue;
+		      
+		      bool transA,transB,kernSuc;
+		      string body;
+		      
+		      switch(codelet){
+			case TNCons:
+			  kernSuc = genKernelTNCons(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
+			  ,1,body,useImageA,useImageB);
+			  transA = true;
+			  transB = false;
+			  break;
+			case TNOff:
+			  kernSuc = genKernelTNOff(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
+			  ,1,body,useImageA,useImageB);
+			  transA = true;
+			  transB = false;
+			  break;
+			case NTCons:
+			  kernSuc = genKernelNTCons(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
+			  ,1,body,useImageA,useImageB,isAggregate);
+			  transA = false;
+			  transB = true;
+			  break;
+			case NTOff:
+			  kernSuc = genKernelNTOff(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
+			  ,1,body,useImageA,useImageB);
+			  transA = false;
+			  transB = true;
+			  break;
+			case NNCons:
+			  kernSuc = genKernelNNCons(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
+			  ,1,body,useImageA,useImageB);
+			  transA = false;
+			  transB = false;
+			  break;
+			case NNOff:
+			  kernSuc = genKernelNNOff(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
+			  ,1,body,useImageA,useImageB);
+			  transA = false;
+			  transB = false;
+			  break;
+		      }
+		      if(!kernSuc) continue;
+		      
+		      //cout<<body<<endl;
+		      stringstream kernelstream;
+		      stringstream namestream;
+		      string codeletStr;
+		      switch(codelet){
+			case TNOff:
+			  codeletStr = "TNO";
+			  break;
+			case TNCons:
+			  codeletStr = "TNC";
+			  break;
+			case NNOff:
+			  codeletStr = "NNO";
+			  break;
+			case NNCons:
+			  codeletStr = "NNC";
+			  break;
+			case NTOff:
+			  codeletStr = "NTO";
+			  break;
+			case NTCons:
+			  codeletStr = "NTC";
+			  break;
+		      }
+		      namestream << T::gemmName() << codeletStr<< i << "_" << j << "_" << simdidx << "_" << ktileidx << "_" << sa << "_" <<sb<<"_"<<imgAidx<<"_"<<imgBidx;
+		      string kname = namestream.str();
+		      if(T::isDouble()) kernelstream<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+		      if(simd==1) kernelstream<<"typedef "<<dtype<<" "<<dtype<<"1;"<<endl;
+		      //kernelstream << "__attribute((reqd_work_group_size(" << lsizesY[j] << "," << lsizesX[j] << ",1)))";
+		      if(useImageA || useImageB){
+			kernelstream<<"__constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;"<<endl;
+			kernelstream<<"float4 myread_imagef(__read_only image2d_t img,int2 pos){ return read_imagef(img,sampler,pos);\n}"<<endl;
+		      }
+		      kernelstream<<"__kernel ";
+		      if(isAggregate){
+			kernelstream<<"__attribute__((reqd_work_group_size(1,1,1))) "<<endl;
+		      }else{
+			kernelstream<<"__attribute__((reqd_work_group_size("<<ly<<","<<lx<<",1))) "<<endl;
+		      }
+		      kernelstream << "void " << kname;
+		      kernelstream << body;
+		      string kernelsrc = kernelstream.str();
+		      string klogname = kname +".cl";
+		      ofstream klog(klogname.c_str());
+		      klog<<kernelsrc<<endl;
+		      klog.close();
+		      const size_t len = kernelsrc.length();
+		      cl_int errcode1, errcode2;
+		      RTimer rt1, rt2, rt3;
+		      rt1.start();
+		      const char *srcbuf = kernelsrc.c_str();
+		      cl_program prg = clCreateProgramWithSource(ctx, 1, &srcbuf, (const size_t*) &len, &errcode1);
+		      cl_int bldcode = clBuildProgram(prg, 1, &dvc, "", NULL, NULL);
+		      cl_kernel krnl = clCreateKernel(prg, kname.c_str(), &errcode2);
+		      rt1.stop();
+		      cout<<"Compile time "<<rt1.getDiff()<<endl;
+		      if (errcode1 != CL_SUCCESS || errcode2 != CL_SUCCESS || bldcode != CL_SUCCESS) {
+			/*cl::Program prgmcpp(prg);
+			 *										const cl::Device dvccpp(dvc);
+			 *										string buildlog = prgmcpp.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dvccpp);
+			 *										cout<<buildlog<<endl;*/
+			size_t retbytes;
+			cout << "Error creating program from source " << errcode1 << " " << errcode2 << " " << bldcode << endl;
+			clGetProgramBuildInfo(prg, dvc, CL_PROGRAM_BUILD_LOG, 0, NULL, &retbytes);
+			char *buildlog = new char[retbytes+1];
+			clGetProgramBuildInfo(prg,dvc,CL_PROGRAM_BUILD_LOG,retbytes,buildlog,NULL);
+			cout << "Buildlog " << retbytes<<" "<<buildlog << endl;
+			//cout << "Error creating program from source " << errcode1 << " " << errcode2 << " " << bldcode << endl;
+			cout << kernelsrc << endl;
+			exit(-1);
+			continue;
+			
+		      } else {
+			//string fname = kname+".cl";
+			//ofstream of(fname.c_str());
+			//of<<kernelsrc<<endl;
+			//of.close();
+			//cout<<"Time taken to compile "<<rt1.getDiff()<<endl;
+			RaijinGemmOptKernel candidate;
+			candidate.transA = transA;
+			candidate.transB = transB;
+			candidate.simdwidth = simd;
+			candidate.ktile = ktile;
+			if(isAggregate){
+			  candidate.lsizex = 1;
+			  candidate.lsizey = 1;
+			  candidate.htile = htile*lx;
+			  candidate.wtile = wtile*ly;
+			}else{
+			  candidate.lsizex = lx;
+			  candidate.lsizey = ly;
+			  candidate.htile = htile;
+			  candidate.wtile = wtile;
 			}
+			candidate.kernel = kernelsrc;
+			candidate.kname = kname;
+			candidate.imageA = useImageA;
+			candidate.imageB = useImageB;
+			
+			double gflops;
+			size_t tuneSize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024 : 2048;
+			gflops = testGemm<T>(tuneSize, dvc, ctx, krnl,candidate,transObj,copyObj,scaleObj,true);
+			
+			clReleaseKernel(krnl);
+			clReleaseProgram(prg);
+			double bwidth = (htile+wtile)*gflops*sizeof(realtype)/(2*htile*wtile);
+			cout<<"htile "<<htile<<" wtile "<<wtile<<" ktile "<<(ktile);
+			cout<<" lx "<<lx<<" ly "<<ly<<" simd "<<simd<<" storeA? "<<storeA[sa]<<" storeB? "<<storeB[sb];
+			cout<<" ImageA? "<<useImageA<<" ImageB? "<<useImageB<<endl;
+			if(isAggregate){
+			  cout<<"A tile "<<((htile*lx*OUTER_TILE_SIZE)*sizeof(realtype)/1024.0)<<"kB"<<endl;
+			  cout<<"B tile "<<((wtile*ly*OUTER_TILE_SIZE)*sizeof(realtype)/1024.0)<<"kB"<<endl;
+			  cout<<"C tile "<<((wtile*ktile*lx*ly)*sizeof(realtype)/1024.0)<<"kB"<<endl;
+			}
+			if (!initialized || (gflops > (*gflopbest)) && (gflops < 2500)) {
+			  *optparams = candidate;
+			  *gflopbest = gflops;
+			  initialized = true;
+			}
+			cout << "Gflops " << gflops << " Bwidth "<< bwidth<<" Best So Far "<<(*gflopbest)<<" "<<kname<<endl;
+			
+		      }
+		    }
+		  }
 		}
+	      }
+	    }
+	  }
 	}
-	clReleaseCommandQueue(q);
-	delete[] maxWorkDims;
+      }
+    }
+    clReleaseCommandQueue(q);
+    delete[] maxWorkDims;
     delete scaleObj;
     delete transObj;
     delete copyObj;
-
+    
 }
 
 
