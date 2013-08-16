@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.6)
 PROJECT(RAIJIN)
 set(OPENCL_INCLUDE_DIR $ENV{OPENCLINCLUDEDIR})
 message("OpenCL path is ${OPENCL_INCLUDE_DIR}")

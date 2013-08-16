@@ -1070,10 +1070,12 @@ static bool genKernelNTOff(int lsizex, int lsizey, int htile, int wtile, int kti
 
 
 
-bool genKernelNTCons(int lsizex, int lsizey, int htile, int wtile, int ktile, string dtype,int simdwidth, bool storea, bool storeb, int maxLocalMemElems,
-                         int padding,string& kernel, bool useImageA,bool useImageB){
+static bool genKernelNTCons(int lsizex, int lsizey, int htile, int wtile, int ktile, string dtype,int simdwidth, bool storea, bool storeb, int maxLocalMemElems,
+                         int padding,string& kernel, bool useImageA,bool useImageB,bool isAggregate=false){
     //cout<<"StoreA "<<storea<<" "<<"StoreB "<<storeb<<" "<<htile<<" "<<wtile<<" "<<" "<<ktile<<" "<<simdwidth<<" "<<lsizex<<" "<<lsizey<<" "<<unroll;
     //cout<<" "<<maxLocalMemElems<<" "<<endl;
+							 if(isAggregate && (storea || storeb)) return false;
+							 if(isAggregate && (useImageA || useImageB)) return false;
     if(storea){
         /*Number of rows of A per workgroup = htile*lsizex. Has to be divisble by lsizex. Trivially satisfied */
         /*Number of columns of A per workgroup = ktile. Has to be divisble by lsizey*simdwidth */
@@ -1114,10 +1116,16 @@ bool genKernelNTCons(int lsizex, int lsizey, int htile, int wtile, int ktile, st
     ss<<"const int simdwidth="<<simdwidth<<";\n";
     ss<<"const int lx = "<<lsizex<<";\n";
     ss<<"const int ly = "<<lsizey<<";\n";
-    ss<<"const int i = get_global_id(1);\n";
-    ss<<"const int j = get_global_id(0);\n";
-    ss<<"const unsigned int lidx = get_local_id(1);"<<endl;
+	ss<<"const unsigned int lidx = get_local_id(1);"<<endl;
     ss<<"const unsigned int lidy = get_local_id(0);"<<endl;
+	if(isAggregate){
+		ss<<"const int ig = get_global_id(1);\n";
+		ss<<"const int jg = get_global_id(0);\n";
+		ss<<"int i,j;"<<endl;
+	}else{
+		ss<<"const int i = get_global_id(1);\n";
+		ss<<"const int j = get_global_id(0);\n";
+	}
     ss<<"unsigned int k;"<<endl;
     if(storea){
         ss<<"__local "<<dtype<<simdwidth<<" ldsA["<<(htile*lsizex)<<"]["<<((ktile/simdwidth)+padding)<<"];"<<endl;
@@ -1125,6 +1133,12 @@ bool genKernelNTCons(int lsizex, int lsizey, int htile, int wtile, int ktile, st
     if(storeb){
         ss<<"__local "<<dtype<<simdwidth<<" ldsB["<<(wtile*lsizey)<<"]["<<((ktile/simdwidth)+padding)<<"];"<<endl;
     }
+	if(isAggregate){
+		ss<<"unsigned int kouter;"<<endl;
+		ss<<"for(kouter=0;kouter<K/simdwidth;kouter+=(128/simdwidth)){"<<endl;
+		ss<<"for(i=ig*lx;i<(ig+1)*lx;i++){"<<endl;
+		ss<<"for(j=jg*ly;j<(jg+1)*ly;j++){"<<endl;
+	}
     for(int x=0;x<htile;x++){
         for(int y=0;y<wtile;y++){
             ss<<dtype<<simdwidth<<" sum"<<x<<"_"<<y<<" = ("<<dtype<<simdwidth<<")(0);\n";
@@ -1132,7 +1146,8 @@ bool genKernelNTCons(int lsizex, int lsizey, int htile, int wtile, int ktile, st
     }
     ss<<"const unsigned int ldbs = ldb/simdwidth;\n";
     ss<<"const unsigned int ldas = lda/simdwidth;\n";
-    ss<<"for(k=0;k<K/simdwidth;k+=(ktile/simdwidth)){"<<endl;
+	if(isAggregate) ss<<"for(k=kouter;k<(kouter+(128/simdwidth));k+=(ktile/simdwidth)){"<<endl;
+	else ss<<"for(k=0;k<K/simdwidth;k+=(ktile/simdwidth)){"<<endl;
     if(storea){
         ss<<"const int gstartxA = get_group_id(1)*htile*lx;\n";
         for(int rowA=0;rowA<htile;rowA++){
@@ -1232,19 +1247,17 @@ bool genKernelNTCons(int lsizex, int lsizey, int htile, int wtile, int ktile, st
     for (int i = 0; i < htile; i++) {
         for (int j = 0; j < wtile; j++) {
 
-                ss << "C[(i*" << htile << "+ " << i << ")*ldc + j*" << wtile << "+" << j << "]";
-                ss << "= alpha*(";
-                for(int s=0;s<simdwidth;s++){
-                    ss<<"sum"<<i<<"_"<<j;
-                    if(simdwidth>1) ss<<".s"<<s;
-                    if(s<(simdwidth-1)) ss<<"+";
-                }
-                ss<<")+ beta*(";
-                 ss << "C[(i*" << htile << "+ " << i << ")*ldc + j*" << wtile << "+" << j << "]";
-                ss<<");\n";
-        }
-    }
-    //ss<<"}"<<endl;
+			ss << "C[(i*" << htile << "+ " << i << ")*ldc + j*" << wtile << "+" << j << "]";
+			ss << "+= alpha*(";
+			for(int s=0;s<simdwidth;s++){
+				ss<<"sum"<<i<<"_"<<j;
+				if(simdwidth>1) ss<<".s"<<s;
+				if(s<(simdwidth-1)) ss<<"+";
+			}
+			ss<<");\n";
+		}
+	}
+	if(isAggregate) ss<<"}}}"<<endl;
     ss<<"}"<<endl;
     kernel = ss.str();
     return true;
@@ -1421,9 +1434,9 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 	const int minLmemIdx = (ltype==CL_LOCAL) ? 0 : 1;
 	//const int minLmemIdx = 1;
 
-    for (int i = 3; i < 7; i++) {
-        for (int j = 1; j < 5; j++) {
-            for (int simdidx = 0; simdidx < 3;simdidx++) {
+    for (int i = 1; i < 7; i++) {
+        for (int j = 0; j < 5; j++) {
+            for (int simdidx = 2; simdidx < 4;simdidx++) {
                 for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
                     for(int sa = minLmemIdx ; sa<2; sa++){
                         for(int sb = minLmemIdx; sb<2 ; sb++){
@@ -1449,7 +1462,10 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 											if(codelet!=TNOff) continue;
 										}
 
-										if(dvctype==CL_DEVICE_TYPE_CPU && codelet!=NTCons) continue;
+										if(dvctype==CL_DEVICE_TYPE_CPU || dvctype==CL_DEVICE_TYPE_ACCELERATOR){
+											if(codelet!=NTCons) continue;
+											isAggregate = true;
+										}
 
 										//int regest = (htile * wtile + htile * simd * u + wtile * simd * u);
 
@@ -1479,7 +1495,7 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 											break;
 										case NTCons:
 											kernSuc = genKernelNTCons(lx,ly,htile, wtile, ktile,dtype, simd, storeA[sa],storeB[sb],lmemSize/(sizeof(realtype))
-												,1,body,useImageA,useImageB);
+												,1,body,useImageA,useImageB,isAggregate);
 											transA = false;
 											transB = true;
 											break;
@@ -1586,11 +1602,18 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 											candidate.transA = transA;
 											candidate.transB = transB;
 											candidate.simdwidth = simd;
-											candidate.htile = htile;
-											candidate.wtile = wtile;
 											candidate.ktile = ktile;
-											candidate.lsizex = lx;
-											candidate.lsizey = ly;
+											if(isAggregate){
+												candidate.lsizex = 1;
+												candidate.lsizey = 1;
+												candidate.htile = htile*lx;
+												candidate.wtile = wtile*ly;
+											}else{
+												candidate.lsizex = lx;
+												candidate.lsizey = ly;
+												candidate.htile = htile;
+												candidate.wtile = wtile;
+											}
 											candidate.kernel = kernelsrc;
 											candidate.kname = kname;
 											candidate.imageA = useImageA;

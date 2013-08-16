@@ -779,12 +779,12 @@ RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context context,cl_device_id device
     cout<<"Filename "<<dpath<<endl;
     std::string line;
     std::ifstream ifile(dpath.c_str());
-    cout<<"Opened file? "<<ifile.is_open()<<" Is Good? "<<ifile.good()<<endl;
+    std::cout<<"Opened file? "<<ifile.is_open()<<" Is Good? "<<ifile.good()<<std::endl;
     RaijinGemmOptKernel opts;
     bool foundProfile = false;
     if(ifile.good() && ifile.is_open()) foundProfile = true;
     if(foundProfile){
-        cout<<"RaijinCL: Found the device profile"<<endl;
+        std::cout<<"RaijinCL: Found the device profile"<<std::endl;
         RaijinGemm<T> *gemm = new RaijinGemm<T>;
 		ifile>>gemm->optkernel;
         gemm->ctx = context;
@@ -798,7 +798,7 @@ RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context context,cl_device_id device
         //TODO: check that there were no errors
         gemm->optprg = clCreateProgramWithSource(gemm->ctx, 1, &prgstr, &len, &errcode);
         //cout<<"Create program from source "<<errcode<<endl;
-        cl_int bldcode = clBuildProgram(gemm->optprg, 1, &(gemm->dvc), "", NULL, NULL);
+        cl_int bldcode = clBuildProgram(gemm->optprg, 1, &(gemm->dvc), "-save-temps", NULL, NULL);
         //cout<<"Build code "<<bldcode<<endl;
         gemm->optcompiled = clCreateKernel(gemm->optprg, gemm->optkernel.kname.c_str(), &errcode);
         std::string genKernel = getGenGemmKernel<T>();
