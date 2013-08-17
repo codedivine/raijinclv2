@@ -622,7 +622,9 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
 		waitList = params.waitEvents;
 		numEvents = params.num_events;
 	}*/
-
+	//clFinish(q);
+	//RTimer rt;
+	//rt.start();
 	cl_event lastEvt;
     for(int i=0;i<imax;i++){
         for(int j=0;j<jmax;j++){
@@ -704,6 +706,9 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
             //clReleaseMemObject(Cnew);
         }
     }
+	//clFinish(q);
+	//rt.stop();
+	//std::cout<<"applyOpt: Time to finish kernels "<<rt.getDiff()<<std::endl;
     return lastEvt;
 
 }
