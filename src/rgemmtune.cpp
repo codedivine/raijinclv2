@@ -77,7 +77,7 @@ bool genKernelTNOff(int lsizex,
 		}else{
 			ss<<"const __global "<<dtype<<simdwidth<<" *restrict B,";
 		}
-		ss<<"__global "<<dtype<<"*restrict C,unsigned int lda,unsigned int ldb,unsigned int ldc,unsigned int K,"<<dtype<<" alpha,"<<dtype<<" beta){"<<endl;
+		ss<<"__global "<<dtype<<simdwidth<<"* restrict C,unsigned int lda,unsigned int ldb,unsigned int ldc,unsigned int K,"<<dtype<<" alpha,"<<dtype<<" beta){"<<endl;
 		ss<<"const int htile ="<<htile<<";\n";
 		ss<<"const int wtile ="<<wtile<<";\n";
 		ss<<"const int ktile ="<<ktile<<";\n";
@@ -159,8 +159,8 @@ bool genKernelTNOff(int lsizex,
 		//ss<<" for(kk=0;kk<ktile;kk+=unroll){\n";
 		//ss<<"const int kk = 0;\n";
 
-		for (int y = 0; y < ktile; y++) {
-			for (int x = 0; x < wtile/simdwidth; x++) {
+		for (int x = 0; x < wtile/simdwidth; x++) {
+			for (int y = 0; y < ktile; y++) {
 				ss << "  const " << dtype << simdwidth << " b" << x << "_" << y << " = ";
 				if(storeb){
 					ss << "ldsB["<<y<<"][ly*"<<x<<"+lidy];\n";
@@ -183,8 +183,8 @@ bool genKernelTNOff(int lsizex,
 			}
 		}
 
-		for(int y=0;y<ktile;y++){
-			for (int x = 0; x < htile/simdwidth; x++) {
+		for (int x = 0; x < htile/simdwidth; x++) {
+			for(int y=0;y<ktile;y++){
 				ss << "  const " << dtype << simdwidth << " a" << x << "_" << y << " = ";
 				if(storea){
 					ss << "ldsA["<<y<<"][lx*"<<x<<"+lidx];\n";
@@ -204,10 +204,6 @@ bool genKernelTNOff(int lsizex,
 						ss << "A[ax + "<<y<<"*ldas + "<<x<<"*lx];"<<endl;
 					}
 				}
-			}
-		}
-		for(int y=0;y<ktile;y++){
-			for (int x = 0; x < htile/simdwidth; x++) {
 				for(int xoff=0;xoff<simdwidth;xoff++){
 					int row = x*simdwidth + xoff;
 					for(int w=0;w<wtile/simdwidth; w++){
@@ -238,22 +234,19 @@ bool genKernelTNOff(int lsizex,
 
 		if(storea || storeb) ss<<" barrier(CLK_LOCAL_MEM_FENCE);"<<endl;
 		ss<<"}"<<endl;
+		ss<<"const unsigned int ldcs = ldc/simdwidth;"<<endl;
+		ss<<"const unsigned int cx = (get_group_id(1)*htile*lx + lidx*simdwidth)*ldcs + get_group_id(0)*(wtile/simdwidth)*ly + lidy;"<<endl;
 		for (int i = 0; i < htile/simdwidth; i++) {
 			for(int ii=0;ii<simdwidth;ii++){
 				for (int j = 0; j < wtile/simdwidth; j++) {
-					for(int jj=0;jj<simdwidth;jj++){
-
-						ss << "C[( (get_group_id(1)*htile+"<<i<<"*simdwidth)*lx + lidx*simdwidth+ "<<ii<<")*ldc + (get_group_id(0)*wtile + " << j << "*simdwidth)*ly + lidy*simdwidth+" << jj << "]";
-						ss << "+= alpha*sum"<<(i*simdwidth+ii)<<"_"<<j;
-						if(simdwidth>1) ss<<".s"<<jj;
-						//ss<<" + beta*";
-						//ss << "C[( (get_group_id(1)*htile+"<<i<<"*simdwidth)*lx + lidx*simdwidth+ "<<ii<<")*ldc + (get_group_id(0)*wtile + " << j << "*simdwidth)*ly + lidy*simdwidth+" << jj << "]";
-						//ss << "C[(i*" << htile << "+ " << i << ")*ldc + (get_group_id(0)*wtile + " << j << "*simdwidth)*ly + lidy*simdwidth+" << jj << "]";
-						ss << ";" << endl;
-					}
+					ss<<"C[cx + ("<<i<<"*lx*simdwidth + "<<ii<<")*ldcs + "<<j<<"*ly]";
+					ss<<" = alpha*sum"<<(i*simdwidth+ii)<<"_"<<j<<" + beta*"; 
+					ss<<"C[cx + ("<<i<<"*lx*simdwidth + "<<ii<<")*ldcs + "<<j<<"*ly]";
+					ss << ";" << endl;
 				}
 			}
 		}
+
 		ss<<"}"<<endl;
 		kernel = ss.str();
 		return true;
@@ -1466,15 +1459,15 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 	if(T::isDouble()) clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE,sizeof(cl_uint),&vecWidth,NULL);
 	else clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT,sizeof(cl_uint),&vecWidth,NULL);
 
-	//const int minImgIdx = (dvctype==CL_DEVICE_TYPE_GPU) ? 0 : 1;
-	const int minImgIdx = 1;
+	const int minImgIdx = (dvctype==CL_DEVICE_TYPE_GPU) ? 0 : 1;
+	//const int minImgIdx = 1;
 	//const int minLmemIdx = (ltype==CL_LOCAL) ? 0 : 1;
 	const int minLmemIdx = 1;
 
-	for (int i = 5; i < 7; i++) {
+	for (int i = 5; i < 8; i++) {
 		for (int j = 6; j < 9; j++) {
-			for (int simdidx = 2; simdidx < 4;simdidx++) {
-				for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
+			for (int simdidx = 1; simdidx < 4;simdidx++) {
+				for (int ktileidx = 0; ktileidx < 3; ktileidx++) {
 					for(int sa = minLmemIdx ; sa<2; sa++){
 						for(int sb = minLmemIdx; sb<2 ; sb++){
 							for(int imgAidx=minImgIdx; imgAidx<2; imgAidx++){
