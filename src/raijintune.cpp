@@ -48,6 +48,7 @@ int main(int argc, char**argv){
     			cl_uint vendorid;
     			clGetDeviceInfo(dvc,CL_DEVICE_VENDOR_ID,sizeof(vendorid),&vendorid,NULL);
     			cout<<"Device "<<j<<":"<<dvcname<<" from vendor "<<vendorid<<endl;
+				cout<<"Supports fp64? "<<supportsFp64(dvc)<<" Is amd_64? "<<isAmd64(dvc)<<endl;
     		}
     	}
 

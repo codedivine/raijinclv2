@@ -326,7 +326,13 @@ bool RaijinTranspose::createRealTrans(int simdw,int lx,int ly,bool useLocalMem,b
     if(toImg && ncomp>4) return false;
     stringstream ss;
     const string dtype = (isDouble) ? "double" : "float";
-    if(isDouble) ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+    if(isDouble){
+		ss<<"#ifdef cl_khr_fp64\n"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+		ss<<"#else"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_amd_fp64 : enable"<<endl;
+		ss<<"#endif"<<endl;
+	}
     if(simdw==1) ss<<"typedef "<<dtype<<" "<<dtype<<"1;"<<endl;
 
     if(insertAttrib) ss<<"__attribute__((reqd_work_group_size("<<ly<<","<<lx<<",1)))"<<endl;
@@ -402,7 +408,14 @@ bool RaijinTranspose::createComplexTrans(int simdw,int lx,int ly,bool useLocalMe
     if(toImg && ncomp>4) return false;
     stringstream ss;
     const string dtype = (isDouble) ? "double" : "float";
-    if(isDouble) ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+
+	if(isDouble){
+		ss<<"#ifdef cl_khr_fp64\n"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+		ss<<"#else"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_amd_fp64 : enable"<<endl;
+		ss<<"#endif"<<endl;
+	}
 
     if(insertAttrib) ss<<"__attribute__((reqd_work_group_size("<<ly<<","<<lx<<",1)))"<<endl;
     ss<<"__kernel void transKernel(__global const "<<dtype<<"2 *input,";
@@ -504,7 +517,15 @@ static cl_kernel createCopyKernel(bool isDouble,bool isComplex,cl_context ctx,cl
     stringstream ss;
     const string dtype = isDouble ? "double" : "float";
     const string elemtype = isComplex ? (dtype+"2") : dtype;
-    if(isDouble) ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+
+	if(isDouble){
+		ss<<"#ifdef cl_khr_fp64\n"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+		ss<<"#else"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_amd_fp64 : enable"<<endl;
+		ss<<"#endif"<<endl;
+	}
+
     ss<<"__kernel void copyKernel(__global const "<<elemtype<<" *input,__global "<<elemtype<<" *output,";
     ss<<"int startRow,int endRow,int startCol,int endCol,int lda){"<<endl;
     ss<<"const unsigned int i = get_global_id(1); const unsigned int j = get_global_id(0);"<<endl;
@@ -537,7 +558,15 @@ static cl_kernel createCopyKernelImg(bool isDouble,bool isComplex,int simd,cl_co
     stringstream ss;
     const string dtype = isDouble ? "double" : "float";
     const string elemtype = isComplex ? (dtype+"2") : dtype;
-    if(isDouble) ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+
+	if(isDouble){
+		ss<<"#ifdef cl_khr_fp64\n"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+		ss<<"#else"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_amd_fp64 : enable"<<endl;
+		ss<<"#endif"<<endl;
+	}
+
     int ncomp = simd;
     if(isDouble) ncomp*=2;
     if(isComplex) ncomp*=2;
@@ -748,7 +777,14 @@ cl_event RaijinCL::transToImg<cl_double2>(RaijinTranspose *trans,
 
 static cl_kernel getScaleKernel(cl_context ctx,cl_device_id dvc,bool isDouble,bool isComplex){
     stringstream ss;
-    if(isDouble) ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+
+	if(isDouble){
+		ss<<"#ifdef cl_khr_fp64\n"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+		ss<<"#else"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_amd_fp64 : enable"<<endl;
+		ss<<"#endif"<<endl;
+	}
     string dtype = isDouble ? "double" : "float";
     if(isComplex){
         ss<<"__kernel void scaleKernel(__global "<<dtype<<"2 *C,int ldc,"<<dtype<<"2 beta){"<<endl;

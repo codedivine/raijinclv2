@@ -1329,7 +1329,14 @@ string genCmulFuncs(bool isDouble){
     stringstream ss;
 
     //mulComplex1
-    if(isDouble) ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+
+	if(isDouble){
+		ss<<"#ifdef cl_khr_fp64\n"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+		ss<<"#else"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_amd_fp64 : enable"<<endl;
+		ss<<"#endif"<<endl;
+	}
     ss<<dtype<<"2 mulComplex1("<<dtype<<"2 a,"<<dtype<<"2 b){"<<endl;
     ss<<dtype<<"2 c;"<<endl;
     if(isDouble) ss<<"#ifndef FP_FAST_FMAF"<<endl;
@@ -1409,8 +1416,8 @@ static void tuneGemmComplex(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel
     int wtiles[] = {2,2,4,4,8,8,4,16};
     int ktiles[] = {1,2,4,8,16,32};
     int simdwidths[] = {1,2,4,8};
-    int lsizesX[] = {8,16,4,16};
-    int lsizesY[] = {8,16,16,4};
+    int lsizesX[] = {8,4,16,16};
+    int lsizesY[] = {8,16,4,16};
     int unrolls[] = {1,2,4,8};
     bool storeA[] = {true, false};
     bool storeB[] = {true, false};
@@ -1434,8 +1441,8 @@ static void tuneGemmComplex(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel
     else clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT,sizeof(cl_uint),&vecWidth,NULL);
     bool imgA[] = {true,false};
     bool imgB[] = {true,false};
-    for (int i = 0; i < 6; i++) {
-        for (int j = 0; j < 4; j++) {
+    for (int i = 2; i < 6; i++) {
+        for (int j = 0; j < 3; j++) {
             for (int simdidx = 1; simdidx < 2;simdidx++) {
                 for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
                     for(int sa = 1 ; sa<2; sa++){
@@ -1559,7 +1566,7 @@ static void tuneGemmComplex(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel
                                         candidate.imageB = useImageB;
 
                                         double gflops;
-                                        size_t tuneSize = 1024;
+                                        size_t tuneSize = 2048;
 
                                         gflops = testGemmComplex<T>(tuneSize, dvc, ctx, krnl,candidate,&transObj,&copyObj,&scaleObj,true);
 

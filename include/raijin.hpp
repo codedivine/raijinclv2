@@ -600,7 +600,7 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
     const size_t elemsize = sizeof(T);
     cl_device_type dvctype;
     clGetDeviceInfo(dvc,CL_DEVICE_TYPE,sizeof(dvctype),&dvctype,NULL);
-    const int msize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024:8192;
+    const int msize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024:4096;
     
 	cl_event scaleEvt = raijinScale<T>(scaleObj,q,C,M,N,ldc,beta);
 
@@ -608,7 +608,7 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
 	cleaner->plan = plan;
     cl_event copyEvt=NULL;
     raijinGemmExecCopy<T>(plan,q,cleaner,A,B,C,ldc,true,true,&copyEvt,transObj,copyObj,scaleObj);
-	clFlush(q);
+	//clFlush(q);
     const int imax = plan->tiles.ivals.size()-1;
     const int jmax = plan->tiles.jvals.size()-1;
     const int kmax = plan->tiles.kvals.size()-1;
@@ -687,7 +687,8 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
                 //if(k==0) newbeta = beta;
                 kcode8 = clSetKernelArg(krnl, 8, elemsize, &beta);
 				cl_event evt;
-                //cout<<"Dispatching "<<gsize[1]<<" "<<gsize[0]<<" "<<lsize[1]<<" "<<lsize[0]<<endl;
+               // cout<<"Dispatching "<<gsize[1]<<" "<<gsize[0]<<" "<<lsize[1]<<" "<<lsize[0]<<endl;
+				//system("PAUSE");
                 cl_int errcode = clEnqueueNDRangeKernel(q, krnl, 2,NULL, gsize, lsize,0, NULL, &evt);
 				lastEvt = evt;
 				if(errcode!=CL_SUCCESS){
@@ -781,15 +782,15 @@ std::string getGenGemmKernel<cl_double2>();
 template <typename T>
 RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context context,cl_device_id device){
     std::string dpath = raijinGetProfileFileName(device,getGemmname<T>());
-    cout<<"Filename "<<dpath<<endl;
+    std::cout<<"Filename "<<dpath<<std::endl;
     std::string line;
     std::ifstream ifile(dpath.c_str());
-    std::cout<<"Opened file? "<<ifile.is_open()<<" Is Good? "<<ifile.good()<<std::endl;
+    //std::cout<<"Opened file? "<<ifile.is_open()<<" Is Good? "<<ifile.good()<<std::endl;
     RaijinGemmOptKernel opts;
     bool foundProfile = false;
     if(ifile.good() && ifile.is_open()) foundProfile = true;
     if(foundProfile){
-        std::cout<<"RaijinCL: Found the device profile"<<std::endl;
+        //std::cout<<"RaijinCL: Found the device profile"<<std::endl;
         RaijinGemm<T> *gemm = new RaijinGemm<T>;
 		ifile>>gemm->optkernel;
         gemm->ctx = context;
@@ -803,7 +804,7 @@ RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context context,cl_device_id device
         //TODO: check that there were no errors
         gemm->optprg = clCreateProgramWithSource(gemm->ctx, 1, &prgstr, &len, &errcode);
         //cout<<"Create program from source "<<errcode<<endl;
-        cl_int bldcode = clBuildProgram(gemm->optprg, 1, &(gemm->dvc), "-save-temps", NULL, NULL);
+        cl_int bldcode = clBuildProgram(gemm->optprg, 1, &(gemm->dvc), "-cl-mad-enable", NULL, NULL);
         //cout<<"Build code "<<bldcode<<endl;
         gemm->optcompiled = clCreateKernel(gemm->optprg, gemm->optkernel.kname.c_str(), &errcode);
         std::string genKernel = getGenGemmKernel<T>();
@@ -990,7 +991,7 @@ typedef RaijinGemm<cl_double> RaijinDgemm;
 
 
 bool supportsFp64(cl_device_id dvc);
-
+bool isAmd64(cl_device_id dvc);
 }
 
 #endif

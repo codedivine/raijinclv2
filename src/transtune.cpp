@@ -184,7 +184,7 @@ void RaijinTranspose::tuneStrans(cl_device_id dvc){
 
 				for(unsigned int lidx=0;lidx<5;lidx++){
 					string kernel;
-                    bool ret = createRealTrans(simdw[simdIdx],lx[lidx],ly[lidx],useLocalMem[localMemIdx],toImg[toImgIdx],false,kernel);
+                    bool ret = createRealTrans(simdw[simdIdx],lx[lidx],ly[lidx],useLocalMem[localMemIdx],toImg[toImgIdx],false,kernel,isAmd64(dvc));
 					if(ret){
 						//cout<<"Kernel is "<<kernel<<endl;
 						double bw = testTransReal<cl_float,false>(dvc,ctx,kernel,simdw[simdIdx],toImg[toImgIdx],lx[lidx],ly[lidx],2048);
@@ -247,7 +247,7 @@ void RaijinTranspose::tuneDtrans(cl_device_id dvc){
 
 				for(unsigned int lidx=0;lidx<5;lidx++){
 					string kernel;
-					bool ret = createRealTrans(simdw[simdIdx],lx[lidx],ly[lidx],useLocalMem[localMemIdx],toImg[toImgIdx],true,kernel);
+					bool ret = createRealTrans(simdw[simdIdx],lx[lidx],ly[lidx],useLocalMem[localMemIdx],toImg[toImgIdx],true,kernel,isAmd64(dvc));
 					if(ret){
 						//cout<<"Kernel is "<<kernel<<endl;
 						double bw = testTransReal<cl_double,true>(dvc,ctx,kernel,simdw[simdIdx],toImg[toImgIdx],lx[lidx],ly[lidx],2048);

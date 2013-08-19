@@ -5,7 +5,14 @@ using namespace std;
 
 static string buildComplexGenKernel(bool isDouble){
     stringstream ss;
-    if(isDouble) ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n";
+
+	if(isDouble){
+		ss<<"#ifdef cl_khr_fp64\n"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_khr_fp64 : enable"<<endl;
+		ss<<"#else"<<endl;
+		ss<<"#pragma OPENCL EXTENSION cl_amd_fp64 : enable"<<endl;
+		ss<<"#endif"<<endl;
+	}
     string dtype = (isDouble) ? "double" : "float";
     string kname = (isDouble) ? "zgemmGen" : "cgemmGen";
     ss<<"__kernel void "<<kname<<"(int K, "<<dtype<<"2 alpha, ";

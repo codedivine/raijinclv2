@@ -38,7 +38,10 @@ static const string sgemmGenKernel = "__kernel void sgemmGen(int K, float alpha,
 		" C[i*ldc + j+offsetC] = alpha*sum + beta*C[i*ldc+j];"
 		"}";
 
-static const string dgemmGenKernel = "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n"
+static const string dgemmGenKernel = "#ifdef cl_khr_fp64\n"
+		"#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n"
+		"#else\n"
+		"#pragma OPENCL EXTENSION cl_amd_fp64 : enable\n"
         "__kernel void dgemmGen(int K, double alpha, "
 		"const double __global *A, unsigned int lda, int offsetA, "
 		"const double __global *B, unsigned int ldb, int offsetB, "
@@ -68,13 +71,40 @@ bool RaijinCL::supportsFp64(cl_device_id dvc){
         if(ext.compare("cl_khr_fp64")==0){
             supports = true;
             break;
-		}/*else if(ext.compare("cl_amd_fp64")==0){
+		}else if(ext.compare("cl_amd_fp64")==0){
 			supports = true;
 			break;
-		}*/
+		}
     }
     delete[] extensions;
     return supports;
+}
+
+bool RaijinCL::isAmd64(cl_device_id dvc){
+    const int size = 10000;
+    char *extensions = new char[size];
+    clGetDeviceInfo(dvc,CL_DEVICE_EXTENSIONS,size,extensions,NULL);
+    
+	string extstring(extensions);
+
+    stringstream extstream(extstring);
+    string ext;
+    bool supportsAmd64 = false;
+	bool supportsKhr64 = false;
+    while(extstream.good()){
+        extstream>>ext;
+        if(ext.compare("cl_amd_fp64")==0){
+            supportsAmd64 = true;
+		}
+		if(ext.compare("cl_khr_fp64")==0){
+			supportsKhr64 = true;
+		}
+    }
+
+    delete[] extensions;
+    if(!supportsAmd64) return false;
+	if(supportsAmd64 && supportsKhr64) return false;
+	return true;
 }
 
 string RaijinCL::raijinGetProfileFileName(cl_device_id dvc, string prefix){
