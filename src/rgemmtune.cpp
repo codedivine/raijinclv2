@@ -81,7 +81,7 @@ bool genKernelTNOff(int lsizex,
 		}else{
 			ss<<"const __global "<<dtype<<simdwidth<<" *restrict B,";
 		}
-		ss<<"__global "<<dtype<<simdwidth<<"* restrict C,unsigned int lda,unsigned int ldb,unsigned int ldc,unsigned int K,"<<dtype<<" alpha,"<<dtype<<" beta){"<<endl;
+		ss<<"__global "<<dtype<<"* restrict C,unsigned int lda,unsigned int ldb,unsigned int ldc,unsigned int K,"<<dtype<<" alpha,"<<dtype<<" beta){"<<endl;
 		ss<<"const int htile ="<<htile<<";\n";
 		ss<<"const int wtile ="<<wtile<<";\n";
 		ss<<"const int ktile ="<<ktile<<";\n";
@@ -118,10 +118,11 @@ bool genKernelTNOff(int lsizex,
 			ss<<"const unsigned int ldbs = ldb/simdwidth;"<<endl;
 		}
 		ss<<"for(k=0;k<K;k+=ktile){"<<endl;
+		ss<<" const uint gstartxA = get_group_id(1)*lx*(htile/simdwidth);"<<endl;
+		ss<<" const uint gstartxB = get_group_id(0)*ly*(wtile/simdwidth);"<<endl;
 		//ss<<"const unsigned int ax = axstart + k*ldas;"<<endl;
 		//ss<<"const unsigned int bx = bxstart + k*ldbs;"<<endl;
 		if(storea){
-		ss<<" const uint gstartxA = get_group_id(1)*lx*(htile/simdwidth);"<<endl;
 			for(int y=0;y<(ktile/lsizex);y++){
 				for(int x=0;x<((htile*lsizex)/(simdwidth*lsizey));x++){
 					ss<<" ldsA["<<y<<"*lx + lidx]["<<x<<"*ly + lidy] = ";
@@ -143,7 +144,6 @@ bool genKernelTNOff(int lsizex,
 			}
 		}
 		if(storeb){
-		ss<<" const uint gstartxB = get_group_id(0)*ly*(wtile/simdwidth);"<<endl;
 			for(int y=0;y<(ktile/lsizex);y++){
 				for(int x=0;x<((wtile*lsizey)/(simdwidth*lsizey));x++){
 					ss<<" ldsB["<<y<<"*lx + lidx]["<<x<<"*ly + lidy] = ";
@@ -247,7 +247,7 @@ bool genKernelTNOff(int lsizex,
 
 		if(storea || storeb) ss<<" barrier(CLK_LOCAL_MEM_FENCE);"<<endl;
 		ss<<"}"<<endl;
-		ss<<"const unsigned int ldcs = ldc/simdwidth;"<<endl;
+		/*ss<<"const unsigned int ldcs = ldc/simdwidth;"<<endl;
 		ss<<"const unsigned int cx = (get_group_id(1)*htile*lx + lidx*simdwidth)*ldcs + get_group_id(0)*(wtile/simdwidth)*ly + lidy;"<<endl;
 		for (int i = 0; i < htile/simdwidth; i++) {
 			for(int ii=0;ii<simdwidth;ii++){
@@ -258,8 +258,25 @@ bool genKernelTNOff(int lsizex,
 					ss << ";" << endl;
 				}
 			}
-		}
+		}*/
 
+
+		for (int i = 0; i < htile/simdwidth; i++) {
+			for(int ii=0;ii<simdwidth;ii++){
+				for (int j = 0; j < wtile/simdwidth; j++) {
+					for(int jj=0;jj<simdwidth;jj++){
+
+						ss << "C[( (get_group_id(1)*htile+"<<i<<"*simdwidth)*lx + lidx*simdwidth+ "<<ii<<")*ldc + (get_group_id(0)*wtile + " << j << "*simdwidth)*ly + lidy*simdwidth+" << jj << "]";
+						ss << "= alpha*sum"<<(i*simdwidth+ii)<<"_"<<j;
+						if(simdwidth>1) ss<<".s"<<jj;
+						ss<<" + beta*";
+						ss << "C[( (get_group_id(1)*htile+"<<i<<"*simdwidth)*lx + lidx*simdwidth+ "<<ii<<")*ldc + (get_group_id(0)*wtile + " << j << "*simdwidth)*ly + lidy*simdwidth+" << jj << "]";
+						//ss << "C[(i*" << htile << "+ " << i << ")*ldc + (get_group_id(0)*wtile + " << j << "*simdwidth)*ly + lidy*simdwidth+" << jj << "]";
+						ss << ";" << endl;
+					}
+				}
+			}
+		}
 		ss<<"}"<<endl;
 		kernel = ss.str();
 		return true;
@@ -1642,14 +1659,14 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 	if(T::isDouble()) clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE,sizeof(cl_uint),&vecWidth,NULL);
 	else clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT,sizeof(cl_uint),&vecWidth,NULL);
 
-	const int minImgIdx = (dvctype==CL_DEVICE_TYPE_GPU) ? 0 : 1;
-	//const int minImgIdx = 1;
-	const int minLmemIdx = (ltype==CL_LOCAL) ? 0 : 1;
-	//const int minLmemIdx = 1;
+	//const int minImgIdx = (dvctype==CL_DEVICE_TYPE_GPU) ? 0 : 1;
+	const int minImgIdx = 1;
+	//const int minLmemIdx = (ltype==CL_LOCAL) ? 0 : 1;
+	const int minLmemIdx = 1;
 
 	double bestCpuPart = 0;
 
-	for (int i = 5; i < 7; i++) {
+	for (int i = 6; i < 7; i++) {
 		for (int j = 6; j < 9; j++) {
 			for (int simdidx = 2; simdidx < 4;simdidx++) {
 				for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
