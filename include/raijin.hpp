@@ -12,6 +12,45 @@
    limitations under the License.
  */
 
+#ifndef RAIJINCL_H
+#define RAIJINCL_H
+
+#define RAIJIN_EXPERIMENTAL
+#ifdef RAIJIN_EXPERIMENTAL
+
+template <typename T> void BlasFun(void* params);
+
+extern "C"{
+#include <acml.h>
+}
+
+template <typename T>
+struct BlasParams{
+	//CBLAS_ORDER order;
+	bool transA;
+	bool transB;
+	int M;
+	int N;
+	int K;
+	T alpha;
+	T *A;
+	int lda;
+	T *B;
+	int ldb;
+	T beta;
+	T *C;
+	int ldc;
+};
+
+template <>
+void BlasFun<float>(void* params);
+
+template<>
+void BlasFun<double>(void* params);
+#endif
+
+
+
 #define CL_USE_DEPRECATED_OPENCL_1_1_APIS
 extern "C"{
 #include <CL/cl.h>
@@ -24,9 +63,6 @@ extern "C"{
 #include <fstream>
 #include <vector>
 #include "rtimer.hpp"
-
-#ifndef RAIJINCL_H
-#define RAIJINCL_H
 
 namespace RaijinCL{
 
@@ -600,7 +636,7 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
     const size_t elemsize = sizeof(T);
     cl_device_type dvctype;
     clGetDeviceInfo(dvc,CL_DEVICE_TYPE,sizeof(dvctype),&dvctype,NULL);
-    const int msize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024:4096;
+    const int msize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024:10000;
     
 	cl_event scaleEvt = raijinScale<T>(scaleObj,q,C,M,N,ldc,beta);
 
@@ -992,6 +1028,8 @@ typedef RaijinGemm<cl_double> RaijinDgemm;
 
 bool supportsFp64(cl_device_id dvc);
 bool isAmd64(cl_device_id dvc);
-}
 
+
+}
 #endif
+

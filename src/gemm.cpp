@@ -23,6 +23,10 @@
 using namespace RaijinCL;
 using namespace std;
 
+#ifdef RAIJIN_EXPERIMENTAL
+#pragma comment(lib,"libacml_mp_dll")
+#endif
+
 static const string sgemmGenKernel = "__kernel void sgemmGen(int K, float alpha, "
 		"const float __global *A, int lda, unsigned int offsetA, "
 		"const float __global *B, int ldb, unsigned int offsetB, "
@@ -294,4 +298,24 @@ void RaijinGemmPlan::deleteGemmPlan(cl_event evt, cl_int status, void *vplan){
 RaijinCleaner::~RaijinCleaner(){
 	for(int i=0;i<bufs.size();i++) clReleaseMemObject(bufs[i]);
 	if(plan!=NULL) delete plan;
+}
+
+template <>
+void BlasFun<float>(void* params){
+	BlasParams<float> *myParams = (BlasParams<float>*)params;
+	char transA = (myParams->transA) ? 'T' : 'N';
+	char transB = (myParams->transB) ? 'T' : 'N';
+	sgemm(transB,transA,myParams->N,myParams->M,myParams->K,myParams->alpha,myParams->B,
+		myParams->ldb,myParams->A,myParams->lda,myParams->beta,myParams->C,myParams->ldc);
+
+}
+
+template<>
+void BlasFun<double>(void* params){
+	BlasParams<double> *myParams = (BlasParams<double>*)params;
+	char transA = (myParams->transA == 'N') ? 'T' : 'N';
+	char transB = (myParams->transB == 'N') ? 'N' : 'T';
+	dgemm(transA,transB,myParams->N,myParams->M,myParams->K,myParams->alpha,myParams->B,
+		myParams->ldb,myParams->A,myParams->lda,myParams->beta,myParams->C,myParams->ldc);
+
 }

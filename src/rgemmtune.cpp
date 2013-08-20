@@ -14,6 +14,10 @@ using namespace RaijinCL;
 
 #define OUTER_TILE_SIZE 64
 
+//#define RAIJIN_EXPERIMENTAL
+
+
+
 bool genKernelTNOff(int lsizex,
 	int lsizey,
 	int htile,
@@ -1340,12 +1344,13 @@ public:
 };
 
 
+#ifndef RAIJIN_EXPERIMENTAL
 template <typename T>
 double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, RaijinGemmOptKernel& optkernel,
 	RaijinTranspose *transObj,
 	RaijinCopy *copyObj,
 	RaijinScale *scaleObj,
-	bool verify=true,int cpuPart=8){
+	bool verify=true){
 		typedef typename T::realtype realtype;
 		typedef typename T::realtypecl realtypecl;
 		size_t size = sizeof(realtype) * N * N;
@@ -1372,12 +1377,14 @@ double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, R
 		}
 		cl_command_queue q = clCreateCommandQueue(ctx,dvc,0,NULL);
 		cl_int errcode;
+
 		bufA = clCreateBuffer(ctx, CL_MEM_READ_ONLY, size, NULL, &errcode);
 		bufB = clCreateBuffer(ctx, CL_MEM_READ_ONLY, size, NULL, &errcode);
 		bufC = clCreateBuffer(ctx, CL_MEM_READ_WRITE, size, NULL, &errcode);
 		clEnqueueWriteBuffer(q, bufA, CL_TRUE, 0, size, ptrA, 0, NULL, NULL);
 		clEnqueueWriteBuffer(q, bufB, CL_TRUE, 0, size, ptrB, 0, NULL, NULL);
 		clEnqueueWriteBuffer(q, bufC, CL_TRUE, 0, size, ptrC, 0, NULL, NULL);
+
 		clFinish(q);
 		const int niters = 3;
 		double tdiff = 0;
@@ -1385,8 +1392,9 @@ double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, R
 			RTimer rt;
 			rt.start();
 			RaijinCleaner *cleaner = new RaijinCleaner;
-			cl_event evt = raijinApplyOpt<realtype>(q,cleaner,krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N,N,N,1,
+			cl_event evt = raijinApplyOpt<realtype>(q,cleaner,krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N*(gpuPart)/(cpuPart+gpuPart),N,N,1,
 				bufA,N,bufB,N,0,bufC,N,transObj,copyObj,scaleObj);
+
 			clFinish(q);
 			delete cleaner;
 			rt.stop();
@@ -1425,8 +1433,151 @@ double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, R
 		clReleaseCommandQueue(q);
 		return 2.0e-9*N*(1.0*N)*(1.0*N)/tdiff;
 }
+#endif
+
+#ifdef RAIJIN_EXPERIMENTAL
 
 
+template <typename T>
+double testGemmHelper(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, RaijinGemmOptKernel& optkernel,
+	RaijinTranspose *transObj,
+	RaijinCopy *copyObj,
+	RaijinScale *scaleObj,
+	bool verify=true,int cpuPart=0){
+		//cout<<"CPU part is "<<cpuPart<<endl;
+		const int gpuPart = 16 - cpuPart;
+		typedef typename T::realtype realtype;
+		typedef typename T::realtypecl realtypecl;
+		size_t size = sizeof(realtype) * N * N;
+		cl_mem bufA, bufB, bufC;
+		realtype *ptrA = new realtype[N * N];
+		realtype *ptrB = new realtype[N * N];
+		realtype *ptrC = new realtype[N * N];
+		for (int i = 0; i < N; i++) {
+			for (int j = 0; j < N; j++) {
+				if(optkernel.transA){
+					ptrA[i * N + j] = 0.002 * j;
+				}else{
+					ptrA[i*N + j] = 0.002*i;
+				}
+
+				if(optkernel.transB){
+					ptrB[i * N + j] = 0.002 * i;
+				}else{
+					ptrB[i*N + j] = 0.002*j;
+				}
+
+				ptrC[i * N + j] = 0;
+			}
+		}
+		cl_command_queue q = clCreateCommandQueue(ctx,dvc,0,NULL);
+		cl_int errcode;
+
+		RTimer rt;
+		rt.start();
+		bufA = clCreateBuffer(ctx, CL_MEM_READ_ONLY, size, NULL, &errcode);
+		if(errcode!=CL_SUCCESS) cout<<"Could not create bufA"<<endl;
+		clEnqueueWriteBuffer(q, bufA, CL_FALSE, 0, size, ptrA, 0, NULL, NULL);
+
+		bufB = clCreateBuffer(ctx, CL_MEM_READ_ONLY, size, NULL, &errcode);
+		if(errcode!=CL_SUCCESS) cout<<"Could not create bufB"<<endl;
+		clEnqueueWriteBuffer(q, bufB, CL_FALSE, 0, size, ptrB, 0, NULL, NULL);
+
+		bufC = clCreateBuffer(ctx, CL_MEM_READ_WRITE, size*gpuPart/(cpuPart+gpuPart), NULL, &errcode);
+		if(errcode!=CL_SUCCESS) cout<<"Could not create bufC"<<endl;
+		clEnqueueWriteBuffer(q, bufC, CL_FALSE, 0, size*gpuPart/(cpuPart+gpuPart), ptrC, 0, NULL, NULL);
+
+		clFinish(q);
+		const int niters = 1;
+		double tdiff = 0;
+
+
+		RaijinCleaner *cleaner = new RaijinCleaner;
+		cl_event evt = raijinApplyOpt<realtype>(q,cleaner,krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N*(gpuPart)/(cpuPart+gpuPart),N,N,1,
+			bufA,N,bufB,N,0,bufC,N,transObj,copyObj,scaleObj);
+
+		if(cpuPart>0){
+			BlasParams<realtype> myParams;
+			myParams.transA = optkernel.transA;
+			myParams.transB = optkernel.transB;
+			myParams.M = (N*cpuPart)/(cpuPart+gpuPart);
+			myParams.N = N;
+			myParams.K = N;
+			myParams.alpha = 1;
+			if(optkernel.transA){
+				myParams.A = &ptrA[(N*gpuPart)/(cpuPart+gpuPart)];
+			}else{
+				myParams.A = &ptrA[N*N*gpuPart/(cpuPart+gpuPart)];
+			}
+			myParams.lda = N;
+			myParams.B = ptrB;
+			myParams.ldb = N;
+			myParams.beta = 0;
+			myParams.C = &ptrC[(N*N*gpuPart)/(cpuPart+gpuPart)];
+			myParams.ldc = N;
+			//cout<<"Params to ACML: "<<myParams.M<<" "<<myParams.N<<" "<<myParams.K<<" "<<myParams.lda<<" "<<myParams.lda<<" "<<myParams.ldc<<endl;
+			//cout<<"Starting point of A: "<<(myParams.A-A)<<endl;
+			BlasFun<realtype>(&myParams);
+		}
+
+		clFinish(q);
+		delete cleaner;
+				clReleaseMemObject(bufA);
+		clReleaseMemObject(bufB);
+		clEnqueueReadBuffer(q, bufC, CL_TRUE, 0, size*gpuPart/(cpuPart+gpuPart), ptrC, 0, NULL, NULL);
+		clReleaseMemObject(bufC);
+		rt.stop();
+		tdiff = rt.getDiff();
+		if(verify){
+			double totalerror = 0.0;
+			for(int i=0;i<N;i++){
+				for(int j=0;j<N;j++){
+					realtype calc = ptrC[i*N+j];
+					realtype expected = N*(0.002*i)*(0.002*j);
+					realtype val = calc - expected;
+					if(val<0) val = -val;
+					/*if(val>0.1){
+					cout<<kname<<" "<<i<<" "<<j<<" "<< val << " "<< calc << " "<< expected << endl;
+					exit(1);
+					}*/
+					totalerror += val;
+				}
+			}
+			double avgerror = totalerror/(N*N);
+			cout<<"Avg absolute error "<<avgerror<<endl;
+			if(avgerror>1) {
+				tdiff *= 100;
+			}
+
+		}
+		delete[] ptrA;
+		delete[] ptrB;
+		delete[] ptrC;
+		clReleaseCommandQueue(q);
+		return 2.0e-9*N*(1.0*N)*(1.0*N)/tdiff;
+}
+
+template <typename T>
+double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, RaijinGemmOptKernel& optkernel,
+	RaijinTranspose *transObj,
+	RaijinCopy *copyObj,
+	RaijinScale *scaleObj,
+	bool verify,int *bestCpuPart){
+
+		double bestGflops = 0;
+		for(int cpuPart=0;cpuPart<16;cpuPart+=2){
+			double gflops = testGemmHelper<T>(N,dvc,ctx,krnl,optkernel,transObj,copyObj,scaleObj,verify,cpuPart);
+			cout<<"CPU part "<<cpuPart<<" Gflops "<<gflops<<endl;
+			if(gflops>bestGflops){
+				bestGflops = gflops;
+				*bestCpuPart = cpuPart;
+			}
+		}
+		return bestGflops;
+}
+
+
+#endif
 
 template <typename T>
 void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optparams,unsigned int N,double *gflopbest){
@@ -1484,9 +1635,11 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 	const int minLmemIdx = (ltype==CL_LOCAL) ? 0 : 1;
 	//const int minLmemIdx = 1;
 
-	for (int i = 3; i < 4; i++) {
+	double bestCpuPart = 0;
+
+	for (int i = 6; i < 7; i++) {
 		for (int j = 6; j < 9; j++) {
-			for (int simdidx = 0; simdidx < 4;simdidx++) {
+			for (int simdidx = 2; simdidx < 4;simdidx++) {
 				for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
 					for(int sa = minLmemIdx ; sa<2; sa++){
 						for(int sb = minLmemIdx; sb<2 ; sb++){
@@ -1675,8 +1828,12 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 
 											double gflops;
 											size_t tuneSize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024 : 2048;
+											int cpuPart;
+#ifdef RAIJIN_EXPERIMENTAL
+											gflops = testGemm<T>(tuneSize, dvc, ctx, krnl,candidate,transObj,copyObj,scaleObj,true,&cpuPart);
+#else
 											gflops = testGemm<T>(tuneSize, dvc, ctx, krnl,candidate,transObj,copyObj,scaleObj,true);
-
+#endif
 											clReleaseKernel(krnl);
 											clReleaseProgram(prg);
 											double bwidth = (htile+wtile)*gflops*sizeof(realtype)/(2*htile*wtile);
@@ -1692,8 +1849,9 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 												*optparams = candidate;
 												*gflopbest = gflops;
 												initialized = true;
+												bestCpuPart = cpuPart;
 											}
-											cout << "Gflops " << gflops << " Bwidth "<< bwidth<<" Best So Far "<<(*gflopbest)<<" "<<(optparams->kname)<<endl;
+											cout << "Gflops " << gflops << " Bwidth "<< bwidth<<" Best So Far "<<(*gflopbest)<<" "<<(optparams->kname)<<" "<<bestCpuPart<<endl;
 
 										}
 									}

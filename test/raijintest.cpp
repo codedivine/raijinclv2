@@ -1,11 +1,3 @@
-#define RAIJIN_EXPERIMENTAL
-#ifdef RAIJIN_EXPERIMENTAL
-extern "C"{
-#include <acml.h>
-}
-#pragma comment(lib,"libacml_mp_dll")
-#endif
-
 #include "raijin.hpp"
 #include "raijin_complex.hpp"
 #include <iostream>
@@ -45,8 +37,8 @@ double verifyPattern1(T *A,T *B, T *C,int M,int N,int K){
 			double read = C[i*N+j];
 			//if(i==1) cout<<"Read "<<read<<endl;
             double diff = abs(read-expected);
-            if(diff>5.0) {
-                //cout<<i<<" "<<j<<" "<<expected<<" "<<read<<" "<<endl;
+            if(diff>1.0) {
+                cout<<i<<" "<<j<<" "<<expected<<" "<<read<<" "<<endl;
                 //exit(1);
             }
             if(diff>sum) sum = diff;
@@ -312,48 +304,6 @@ void testGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 }
 
 #ifdef RAIJIN_EXPERIMENTAL
-template <typename T>
-struct BlasParams{
-	//CBLAS_ORDER order;
-	char transA;
-	char transB;
-	int M;
-	int N;
-	int K;
-	T alpha;
-	T *A;
-	int lda;
-	T *B;
-	int ldb;
-	T beta;
-	T *C;
-	int ldc;
-};
-
-template <typename T> DWORD WINAPI BlasFun(LPVOID params);
-
-template <>
-DWORD WINAPI BlasFun<float>(LPVOID params){
-	BlasParams<float> *myParams = (BlasParams<float>*)params;
-	char transA = (myParams->transA == 'N') ? 'T' : 'N';
-	char transB = (myParams->transB == 'N') ? 'N' : 'T';
-	sgemm(transA,transB,myParams->N,myParams->M,myParams->K,myParams->alpha,myParams->B,
-		myParams->ldb,myParams->A,myParams->lda,myParams->beta,myParams->C,myParams->ldc);
-	return 0;
-
-}
-
-template<>
-DWORD WINAPI BlasFun<double>(LPVOID params){
-	BlasParams<double> *myParams = (BlasParams<double>*)params;
-	char transA = (myParams->transA == 'N') ? 'T' : 'N';
-	char transB = (myParams->transB == 'N') ? 'N' : 'T';
-	dgemm(transA,transB,myParams->N,myParams->M,myParams->K,myParams->alpha,myParams->B,
-		myParams->ldb,myParams->A,myParams->lda,myParams->beta,myParams->C,myParams->ldc);
-	return 0;
-
-}
-
 
 template <typename T>
 void testPartGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
@@ -414,104 +364,108 @@ void testPartGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	RTimer bufTimer;
 	bufTimer.start();
 	RTimer rt;
-    rt.start();
+	rt.start();
 	//cout<<"Creating buffers CPU: "<<cpuPart<<" GPU: "<<gpuPart<<endl;
-	bufA = clCreateBuffer(ctx, CL_MEM_READ_ONLY, sizeA|CL_MEM_USE_HOST_PTR, NULL, &errcode);
-	bufB = clCreateBuffer(ctx, CL_MEM_READ_ONLY, sizeB|CL_MEM_USE_HOST_PTR, NULL, &errcode);
-	bufC = clCreateBuffer(ctx, CL_MEM_READ_WRITE, sizeC, NULL, &errcode);
-	//clEnqueueWriteBuffer(q, bufA, CL_TRUE, 0, sizeA, A, 0, NULL, NULL);
-	//clEnqueueWriteBuffer(q, bufB, CL_TRUE, 0, sizeB, B, 0, NULL, NULL);
-	clEnqueueWriteBuffer(q, bufC, CL_TRUE, 0, sizeC, C, 0, NULL, NULL);
+	bufA = clCreateBuffer(ctx, CL_MEM_READ_ONLY, sizeA, NULL, &errcode);
+	if(errcode!=CL_SUCCESS) cout<<"Could not create bufA"<<endl;
+	clEnqueueWriteBuffer(q, bufA, CL_FALSE, 0, sizeA, A, 0, NULL, NULL);
+
+	bufB = clCreateBuffer(ctx, CL_MEM_READ_ONLY, sizeB, NULL, &errcode);
+	if(errcode!=CL_SUCCESS) cout<<"Could not create bufB"<<endl;
+	clEnqueueWriteBuffer(q, bufB, CL_FALSE, 0, sizeB, B, 0, NULL, NULL);
+
+	bufC = clCreateBuffer(ctx, CL_MEM_READ_WRITE, sizeC*gpuPart/(cpuPart+gpuPart), NULL, &errcode);
+	if(errcode!=CL_SUCCESS) cout<<"Could not create bufC"<<endl;
+	clEnqueueWriteBuffer(q, bufC, CL_FALSE, 0, sizeC*gpuPart/(cpuPart+gpuPart), C, 0, NULL, NULL);
+
+	clFinish(q);
 	bufTimer.stop();
 	//gemm->printOptKernelBinary();
-    const int niters = 1;
-    double tdiff = 0;
 	//void *ptr;
 	//system("PAUSE");
-    for(int i=0;i<niters;i++){
-        
-		int lda = transA ? M : K;
-		int ldb = transB ? K : N;
-		//ptr = clEnqueueMapBuffer(q,bufC,CL_TRUE,0,0,sizeC,0,NULL,NULL,NULL);
-		RaijinCleaner *cleaner = NULL;
-		 cl_event evt = gemm->apply(q,&cleaner,RaijinRowMajor,transA,transB,
-                                   M*gpuPart/(cpuPart+gpuPart),N,K,
-                                   1,bufA,lda,0,
-                                   bufB,ldb,0,
-                                   0,
-                                   bufC,N,0);
-		 //cout<<"Finished dispatching kernel"<<endl;
-		 //system("PAUSE");
-		 clFlush(q);
-		DWORD threadId;
-		HANDLE threadHandle;
-		BlasParams<realtype> myParams;
-		if(cpuPart>0) {
-			RTimer cpuTimer;
-			cpuTimer.start();
-			//myParams.order = CblasRowMajor;
-			if(transA) myParams.transA = 'T';
-			else myParams.transA = 'N';
-			if(transB) myParams.transB = 'T';
-			else myParams.transB = 'N';
-			myParams.M = (M*cpuPart)/(cpuPart+gpuPart);
-			myParams.N = N;
-			myParams.K = K;
-			myParams.alpha = 1;
-			if(transA){
-				myParams.A = &A[(M*gpuPart)/(cpuPart+gpuPart)];
-			}else{
-				myParams.A = &A[M*N*gpuPart/(cpuPart+gpuPart)];
-			}
-			myParams.lda = M;
-			myParams.B = B;
-			myParams.ldb = N;
-			myParams.beta = 0;
-			myParams.C = &C[(M*N*gpuPart)/(cpuPart+gpuPart)];
-			myParams.ldc = N;
-			//cout<<"Params to ACML: "<<myParams.M<<" "<<myParams.N<<" "<<myParams.K<<" "<<myParams.lda<<" "<<myParams.lda<<" "<<myParams.ldc<<endl;
-			//cout<<"Starting point of A: "<<(myParams.A-A)<<endl;
-			//threadHandle = CreateThread(0,0,BlasFun,&myParams,0,&threadId);
-			//WaitForSingleObject(threadHandle,INFINITE);
-			BlasFun<realtype>(&myParams);
-			cpuTimer.stop();
-			double ctdiff = cpuTimer.getDiff();
-			double cgflops = (2.0e-9*myParams.M*myParams.N*myParams.K)/ctdiff;
-			cout<<"CPU time : "<<ctdiff<<" "<<cgflops<<endl;
+
+	int lda = transA ? M : K;
+	int ldb = transB ? K : N;
+	//ptr = clEnqueueMapBuffer(q,bufC,CL_TRUE,0,0,sizeC,0,NULL,NULL,NULL);
+	RaijinCleaner *cleaner = NULL;
+	cl_event evt = gemm->apply(q,&cleaner,RaijinRowMajor,transA,transB,
+		M*gpuPart/(cpuPart+gpuPart),N,K,
+		1,bufA,lda,0,
+		bufB,ldb,0,
+		0,
+		bufC,N,0);
+
+	//cout<<"Finished dispatching kernel"<<endl;
+	//system("PAUSE");
+	clFlush(q);
+	DWORD threadId;
+	HANDLE threadHandle;
+	BlasParams<realtype> myParams;
+	if(cpuPart>0) {
+		RTimer cpuTimer;
+		cpuTimer.start();
+		//myParams.order = CblasRowMajor;
+		myParams.transA = transA;
+		myParams.transB = transB;
+		myParams.M = (M*cpuPart)/(cpuPart+gpuPart);
+		myParams.N = N;
+		myParams.K = K;
+		myParams.alpha = 1;
+		if(transA){
+			myParams.A = &A[(M*gpuPart)/(cpuPart+gpuPart)];
+		}else{
+			myParams.A = &A[M*N*gpuPart/(cpuPart+gpuPart)];
 		}
-		clFinish(q);
-		//cout<<"Finsihed queue"<<endl;
-		//system("PAUSE");
-		if(cleaner!=NULL) delete cleaner;
-		//cout<<"Deleted cleaner"<<endl;
-		//system("PAUSE");
-        //clFinish(params.queue);
-		//clWaitForEvents(1,&evt);
-		
-    }
-	 rt.stop();
-	 cout<<"Buffer creation time "<<bufTimer.getDiff()<<endl;
-	 tdiff = rt.getDiff()/niters;
-	  //cout<<"Time "<<tdiff<<endl;
-	//clEnqueueUnmapMemObject(q,bufC,ptr,0,NULL,NULL);
-	clEnqueueReadBuffer(q,bufC,CL_TRUE,0,sizeC*gpuPart/(cpuPart+gpuPart),&C[N*cpuPart*M/(cpuPart+gpuPart)],0,NULL,NULL);
-	//ptr = clEnqueueMapBuffer(q,bufC,CL_TRUE,CL_MAP_READ,0,sizeC*gpuPart/(cpuPart+gpuPart),0,NULL,NULL,NULL);
+		myParams.lda = M;
+		myParams.B = B;
+		myParams.ldb = N;
+		myParams.beta = 0;
+		myParams.C = &C[(M*N*gpuPart)/(cpuPart+gpuPart)];
+		myParams.ldc = N;
+		//cout<<"Params to ACML: "<<myParams.M<<" "<<myParams.N<<" "<<myParams.K<<" "<<myParams.lda<<" "<<myParams.lda<<" "<<myParams.ldc<<endl;
+		//cout<<"Starting point of A: "<<(myParams.A-A)<<endl;
+		//threadHandle = CreateThread(0,0,BlasFun,&myParams,0,&threadId);
+		//WaitForSingleObject(threadHandle,INFINITE);
+		BlasFun<realtype>(&myParams);
+		cpuTimer.stop();
+		double ctdiff = cpuTimer.getDiff();
+		double cgflops = (2.0e-9*myParams.M*myParams.N*myParams.K)/ctdiff;
+		//cout<<"CPU time : "<<ctdiff<<" "<<cgflops<<endl;
+	}
 	clFinish(q);
-	delete gemm;
-	double error = 0.0;
-	/*switch(pattern){
-		case 1:
-			error = verifyPattern1<float>(A,B,C,N,N,N);
-			break;
-		case 2:
-			error = verifyPattern2<float>(A,B,C,N,N,N);
-			break;
-	}*/
-//	clEnqueueUnmapMemObject(q,bufC,ptr,0,NULL,NULL);
-	//clFinish(q);
+	//cout<<"Finsihed queue"<<endl;
+	//system("PAUSE");
+	if(cleaner!=NULL) delete cleaner;
+	//cout<<"Deleted cleaner"<<endl;
+	//system("PAUSE");
+	//clFinish(params.queue);
+	//clWaitForEvents(1,&evt);
+
+
 	clReleaseMemObject(bufA);
 	clReleaseMemObject(bufB);
+	//cout<<"Time "<<tdiff<<endl;
+	//clEnqueueUnmapMemObject(q,bufC,ptr,0,NULL,NULL);
+	clEnqueueReadBuffer(q,bufC,CL_TRUE,0,sizeC*gpuPart/(cpuPart+gpuPart),C,0,NULL,NULL);
 	clReleaseMemObject(bufC);
+	rt.stop();
+	const double tdiff = rt.getDiff();
+	cout<<"Buffer creation time "<<bufTimer.getDiff()<<endl;
+	//ptr = clEnqueueMapBuffer(q,bufC,CL_TRUE,CL_MAP_READ,0,sizeC*gpuPart/(cpuPart+gpuPart),0,NULL,NULL,NULL);
+	//clFinish(q);
+	delete gemm;
+	double error = 0.0;
+	switch(pattern){
+	case 1:
+		error = verifyPattern1<realtype>(A,B,C,N,N,N);
+		break;
+	case 2:
+		error = verifyPattern2<realtype>(A,B,C,N,N,N);
+		break;
+	}
+//	clEnqueueUnmapMemObject(q,bufC,ptr,0,NULL,NULL);
+	//clFinish(q);
+
 	clReleaseCommandQueue(q);
 	clGetContextInfo(ctx,CL_CONTEXT_REFERENCE_COUNT,sizeof(cl_uint),&refCount,NULL);
 	cout<<"Reference count of context "<<refCount<<endl;
@@ -633,14 +587,14 @@ int main(int argc, char **argv){
 #ifdef RAIJIN_EXPERIMENTAL
             testPartGemm<TestGemmDouble>(dvc,size,pattern,transA,transB);
 #else
-				for(int s=1024;s<=4096;s+=128) testGemm<TestGemmDouble>(dvc,s,pattern,transA,transB);
+			testGemm<TestGemmDouble>(dvc,size,pattern,transA,transB);
 #endif
 
 		}else if(dtype=='s'){
 #ifdef RAIJIN_EXPERIMENTAL
             testPartGemm<TestGemmSingle>(dvc,size,pattern,transA,transB);
 #else
-				for(int s=1024;s<=4096;s+=128) testGemm<TestGemmSingle>(dvc,s,pattern,transA,transB);
+				testGemm<TestGemmSingle>(dvc,size,pattern,transA,transB);
 #endif
         }else if(dtype=='z'){
             for(int s=1024;s<=3200;s+=128) testGemmComplex<TestGemmZ>(dvc,size,transA,transB,true);
