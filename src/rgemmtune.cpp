@@ -1392,7 +1392,7 @@ double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, R
 			RTimer rt;
 			rt.start();
 			RaijinCleaner *cleaner = new RaijinCleaner;
-			cl_event evt = raijinApplyOpt<realtype>(q,cleaner,krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N*(gpuPart)/(cpuPart+gpuPart),N,N,1,
+			cl_event evt = raijinApplyOpt<realtype>(q,cleaner,krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N,N,N,1,
 				bufA,N,bufB,N,0,bufC,N,transObj,copyObj,scaleObj);
 
 			clFinish(q);
@@ -1450,9 +1450,10 @@ double testGemmHelper(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel k
 		typedef typename T::realtypecl realtypecl;
 		size_t size = sizeof(realtype) * N * N;
 		cl_mem bufA, bufB, bufC;
-		realtype *ptrA = new realtype[N * N];
-		realtype *ptrB = new realtype[N * N];
-		realtype *ptrC = new realtype[N * N];
+		realtype *ptrA = (realtype*)_aligned_malloc(sizeof(realtype)*N*N,4096);
+		realtype *ptrB = (realtype*)_aligned_malloc(sizeof(realtype)*N*N,4096);
+		realtype *ptrC = (realtype*)_aligned_malloc(sizeof(realtype)*N*N,4096);
+
 		for (int i = 0; i < N; i++) {
 			for (int j = 0; j < N; j++) {
 				if(optkernel.transA){
@@ -1475,6 +1476,7 @@ double testGemmHelper(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel k
 
 		RTimer rt;
 		rt.start();
+#ifdef RAIJIN_AMD
 		bufA = clCreateBuffer(ctx, CL_MEM_READ_ONLY, size, NULL, &errcode);
 		if(errcode!=CL_SUCCESS) cout<<"Could not create bufA"<<endl;
 		clEnqueueWriteBuffer(q, bufA, CL_FALSE, 0, size, ptrA, 0, NULL, NULL);
@@ -1482,6 +1484,15 @@ double testGemmHelper(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel k
 		bufB = clCreateBuffer(ctx, CL_MEM_READ_ONLY, size, NULL, &errcode);
 		if(errcode!=CL_SUCCESS) cout<<"Could not create bufB"<<endl;
 		clEnqueueWriteBuffer(q, bufB, CL_FALSE, 0, size, ptrB, 0, NULL, NULL);
+#endif
+#ifdef RAIJIN_INTEL
+		bufA = clCreateBuffer(ctx, CL_MEM_READ_ONLY|CL_MEM_USE_HOST_PTR, size, ptrA, &errcode);
+		if(errcode!=CL_SUCCESS) cout<<"Could not create bufA"<<endl;
+
+		bufB = clCreateBuffer(ctx, CL_MEM_READ_ONLY|CL_MEM_USE_HOST_PTR, size, ptrB, &errcode);
+		if(errcode!=CL_SUCCESS) cout<<"Could not create bufB"<<endl;
+
+#endif
 
 		bufC = clCreateBuffer(ctx, CL_MEM_READ_WRITE, size*gpuPart/(cpuPart+gpuPart), NULL, &errcode);
 		if(errcode!=CL_SUCCESS) cout<<"Could not create bufC"<<endl;
@@ -1495,7 +1506,7 @@ double testGemmHelper(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel k
 		RaijinCleaner *cleaner = new RaijinCleaner;
 		cl_event evt = raijinApplyOpt<realtype>(q,cleaner,krnl,optkernel,ctx,dvc,RaijinCL::RaijinRowMajor,optkernel.transA,optkernel.transB,N*(gpuPart)/(cpuPart+gpuPart),N,N,1,
 			bufA,N,bufB,N,0,bufC,N,transObj,copyObj,scaleObj);
-
+		clFlush(q);
 		if(cpuPart>0){
 			BlasParams<realtype> myParams;
 			myParams.transA = optkernel.transA;
@@ -1550,9 +1561,9 @@ double testGemmHelper(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel k
 			}
 
 		}
-		delete[] ptrA;
-		delete[] ptrB;
-		delete[] ptrC;
+		_aligned_free(ptrA);
+		_aligned_free(ptrB);
+		_aligned_free(ptrC);
 		clReleaseCommandQueue(q);
 		return 2.0e-9*N*(1.0*N)*(1.0*N)/tdiff;
 }
@@ -1637,12 +1648,12 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 
 	double bestCpuPart = 0;
 
-	for (int i = 6; i < 7; i++) {
-		for (int j = 6; j < 9; j++) {
+	for (int i = 3; i < 7; i++) {
+		for (int j = 4; j < 9; j++) {
 			for (int simdidx = 2; simdidx < 4;simdidx++) {
 				for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
-					for(int sa = minLmemIdx ; sa<2; sa++){
-						for(int sb = minLmemIdx; sb<2 ; sb++){
+					for(int sa = minLmemIdx ; sa<1; sa++){
+						for(int sb = minLmemIdx; sb<1 ; sb++){
 							for(int imgAidx=minImgIdx; imgAidx<2; imgAidx++){
 								for(int imgBidx=minImgIdx; imgBidx<2; imgBidx++){
 									for(int codelet=0;codelet<6;codelet++){

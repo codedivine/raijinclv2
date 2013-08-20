@@ -17,12 +17,21 @@
 
 #define RAIJIN_EXPERIMENTAL
 #ifdef RAIJIN_EXPERIMENTAL
+#define RAIJIN_INTEL
 
 template <typename T> void BlasFun(void* params);
 
+#ifdef RAIJIN_AMD
 extern "C"{
 #include <acml.h>
 }
+#endif
+
+#ifdef RAIJIN_INTEL
+extern "C"{
+#include <mkl.h>
+}
+#endif
 
 template <typename T>
 struct BlasParams{
@@ -638,16 +647,18 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
     clGetDeviceInfo(dvc,CL_DEVICE_TYPE,sizeof(dvctype),&dvctype,NULL);
     const int msize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024:10000;
     
-	cl_event scaleEvt = raijinScale<T>(scaleObj,q,C,M,N,ldc,beta);
+	const int imax = plan->tiles.ivals.size()-1;
+    const int jmax = plan->tiles.jvals.size()-1;
+    const int kmax = plan->tiles.kvals.size()-1;
+	const int ntiles = imax*jmax*kmax;
+	cl_event scaleEvt;
+	if(ntiles>1) scaleEvt = raijinScale<T>(scaleObj,q,C,M,N,ldc,beta);
 
 	RaijinGemmPlan *plan = raijinGetGemmPlan<T>(optparams,ctx,dvc,order,transA,transB,M,N,K,lda,ldb,msize);
 	cleaner->plan = plan;
     cl_event copyEvt=NULL;
     raijinGemmExecCopy<T>(plan,q,cleaner,A,B,C,ldc,true,true,&copyEvt,transObj,copyObj,scaleObj);
 	//clFlush(q);
-    const int imax = plan->tiles.ivals.size()-1;
-    const int jmax = plan->tiles.jvals.size()-1;
-    const int kmax = plan->tiles.kvals.size()-1;
 
 	/*if(copyEvt!=NULL){
         //cout<<"raijinApplyOpt: Waitliset set to copy"<<endl;
@@ -676,7 +687,8 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
             region.size = (Mnew*ldc - j*msize)*sizeof(T);
             //cout<<"C origin: ("<<(region.origin/(ldc*sizeof(cl_float)))<<","<<(region.origin%(ldc*sizeof(cl_float)))/sizeof(cl_float)<<")"<<endl;
             cl_mem Cnew;
-            Cnew = clCreateSubBuffer(C,CL_MEM_READ_WRITE,CL_BUFFER_CREATE_TYPE_REGION,&region,NULL);
+            if(ntiles>1) Cnew = clCreateSubBuffer(C,CL_MEM_READ_WRITE,CL_BUFFER_CREATE_TYPE_REGION,&region,NULL);
+			else Cnew = C;
             for(int k=0;k<kmax;k++){
                 //cout<<"applyRegionOpt iteration ("<<i<<","<<j<<","<<k<<")"<<endl;
                 //cout<<"Size ("<<Mnew<<","<<Nnew<<")"<<endl;
@@ -738,7 +750,7 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
             //cout<<curEventIndex<<endl;
 
 			//TODO: Need to put these on a resource cleaner somewhere?
-			cleaner->bufs.push_back(Cnew);
+			if(ntiles>1) cleaner->bufs.push_back(Cnew);
             //clSetEventCallback(events[curEventIndex-1],CL_COMPLETE,releaseMemObject,(void *)Cnewcopy);
             //clReleaseMemObject(Cnew);
         }

@@ -366,6 +366,7 @@ void testPartGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	RTimer rt;
 	rt.start();
 	//cout<<"Creating buffers CPU: "<<cpuPart<<" GPU: "<<gpuPart<<endl;
+#ifdef RAIJIN_AMD
 	bufA = clCreateBuffer(ctx, CL_MEM_READ_ONLY, sizeA, NULL, &errcode);
 	if(errcode!=CL_SUCCESS) cout<<"Could not create bufA"<<endl;
 	clEnqueueWriteBuffer(q, bufA, CL_FALSE, 0, sizeA, A, 0, NULL, NULL);
@@ -373,6 +374,15 @@ void testPartGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	bufB = clCreateBuffer(ctx, CL_MEM_READ_ONLY, sizeB, NULL, &errcode);
 	if(errcode!=CL_SUCCESS) cout<<"Could not create bufB"<<endl;
 	clEnqueueWriteBuffer(q, bufB, CL_FALSE, 0, sizeB, B, 0, NULL, NULL);
+
+#endif
+#ifdef RAIJIN_INTEL
+	bufA = clCreateBuffer(ctx, CL_MEM_READ_ONLY|CL_MEM_USE_HOST_PTR, sizeA, A, &errcode);
+	if(errcode!=CL_SUCCESS) cout<<"Could not create bufA"<<endl;
+
+	bufB = clCreateBuffer(ctx, CL_MEM_READ_ONLY|CL_MEM_USE_HOST_PTR, sizeB, B, &errcode);
+	if(errcode!=CL_SUCCESS) cout<<"Could not create bufB"<<endl;
+#endif
 
 	bufC = clCreateBuffer(ctx, CL_MEM_READ_WRITE, sizeC*gpuPart/(cpuPart+gpuPart), NULL, &errcode);
 	if(errcode!=CL_SUCCESS) cout<<"Could not create bufC"<<endl;
@@ -398,8 +408,6 @@ void testPartGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	//cout<<"Finished dispatching kernel"<<endl;
 	//system("PAUSE");
 	clFlush(q);
-	DWORD threadId;
-	HANDLE threadHandle;
 	BlasParams<realtype> myParams;
 	if(cpuPart>0) {
 		RTimer cpuTimer;
@@ -440,19 +448,19 @@ void testPartGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	//system("PAUSE");
 	//clFinish(params.queue);
 	//clWaitForEvents(1,&evt);
-
-
-	clReleaseMemObject(bufA);
-	clReleaseMemObject(bufB);
 	//cout<<"Time "<<tdiff<<endl;
 	//clEnqueueUnmapMemObject(q,bufC,ptr,0,NULL,NULL);
+	RTimer cpTimer;
+	cpTimer.start();
 	clEnqueueReadBuffer(q,bufC,CL_TRUE,0,sizeC*gpuPart/(cpuPart+gpuPart),C,0,NULL,NULL);
-	clReleaseMemObject(bufC);
+	cpTimer.stop();
 	rt.stop();
+	
+	clReleaseMemObject(bufA);
+	clReleaseMemObject(bufB);
+	clReleaseMemObject(bufC);
 	const double tdiff = rt.getDiff();
 	cout<<"Buffer creation time "<<bufTimer.getDiff()<<endl;
-	//ptr = clEnqueueMapBuffer(q,bufC,CL_TRUE,CL_MAP_READ,0,sizeC*gpuPart/(cpuPart+gpuPart),0,NULL,NULL,NULL);
-	//clFinish(q);
 	delete gemm;
 	double error = 0.0;
 	switch(pattern){
@@ -471,7 +479,7 @@ void testPartGemm(cl_device_id dvc,int N,int pattern,bool transA,bool transB){
 	cout<<"Reference count of context "<<refCount<<endl;
 	clReleaseContext(ctx);
     cout<<"Max error "<<error<<" GFlops "<<(2.0e-9*M*N*K/tdiff)<<" time "<<tdiff<<endl;
-	cout<<"Gflops without data copy "<<(2.0e-9*M*N*K/(tdiff-bufTimer.getDiff()))<<" time "<<(tdiff-bufTimer.getDiff())<<endl;
+	cout<<"Gflops without data copy "<<(2.0e-9*M*N*K/(tdiff-bufTimer.getDiff()-cpTimer.getDiff()))<<" time "<<(tdiff-bufTimer.getDiff())<<endl;
 	_aligned_free(A);
 	_aligned_free(B);
 	_aligned_free(C);

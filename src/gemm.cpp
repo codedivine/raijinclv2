@@ -24,7 +24,9 @@ using namespace RaijinCL;
 using namespace std;
 
 #ifdef RAIJIN_EXPERIMENTAL
+#ifdef RAIJIN_AMD
 #pragma comment(lib,"libacml_mp_dll")
+#endif
 #endif
 
 static const string sgemmGenKernel = "__kernel void sgemmGen(int K, float alpha, "
@@ -300,22 +302,37 @@ RaijinCleaner::~RaijinCleaner(){
 	if(plan!=NULL) delete plan;
 }
 
+#ifdef RAIJIN_EXPERIMENTAL
 template <>
 void BlasFun<float>(void* params){
 	BlasParams<float> *myParams = (BlasParams<float>*)params;
+#ifdef RAIJIN_AMD
 	char transA = (myParams->transA) ? 'T' : 'N';
 	char transB = (myParams->transB) ? 'T' : 'N';
 	sgemm(transB,transA,myParams->N,myParams->M,myParams->K,myParams->alpha,myParams->B,
 		myParams->ldb,myParams->A,myParams->lda,myParams->beta,myParams->C,myParams->ldc);
+#endif
+#ifdef RAIJIN_INTEL
+	cblas_sgemm(CblasRowMajor,(myParams->transA)? CblasTrans : CblasNoTrans, (myParams->transB) ? CblasTrans : CblasNoTrans,
+		myParams->M,myParams->N,myParams->K,myParams->alpha,myParams->A,myParams->lda,myParams->B,myParams->ldb,myParams->beta,
+		myParams->C,myParams->ldc);
+#endif
 
 }
 
 template<>
 void BlasFun<double>(void* params){
 	BlasParams<double> *myParams = (BlasParams<double>*)params;
+#ifdef RAIJIN_AMD
 	char transA = (myParams->transA == 'N') ? 'T' : 'N';
 	char transB = (myParams->transB == 'N') ? 'N' : 'T';
 	dgemm(transA,transB,myParams->N,myParams->M,myParams->K,myParams->alpha,myParams->B,
 		myParams->ldb,myParams->A,myParams->lda,myParams->beta,myParams->C,myParams->ldc);
-
+#endif
+#ifdef RAIJIN_INTEL
+	cblas_dgemm(CblasRowMajor,(myParams->transA)? CblasTrans : CblasNoTrans, (myParams->transB) ? CblasTrans : CblasNoTrans,
+		myParams->M,myParams->N,myParams->K,myParams->alpha,myParams->A,myParams->lda,myParams->B,myParams->ldb,myParams->beta,
+		myParams->C,myParams->ldc);
+#endif
 }
+#endif
