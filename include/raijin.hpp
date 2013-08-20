@@ -17,7 +17,7 @@
 
 #define RAIJIN_EXPERIMENTAL
 #ifdef RAIJIN_EXPERIMENTAL
-#define RAIJIN_INTEL
+#define RAIJIN_AMD
 
 template <typename T> void BlasFun(void* params);
 
@@ -402,13 +402,14 @@ void raijinPrivateAllocStuff(RaijinGemmPlan::ExecBufs& execbuf,
                     if(isDouble) format.image_channel_data_type = CL_SIGNED_INT32;
                     else format.image_channel_data_type = CL_FLOAT;
                     size_t imgheight,imgwidth;
-                    if(isCopy){
+                    if(!opttransA){
                         imgheight = Mnew;
                         imgwidth = Knew/simd;
                     }else{
                         imgheight = Knew;
                         imgwidth = Mnew/simd;
                     }
+					//std::cout<<"raijinPrivateAllocStuff: Creating img with width "<<imgwidth<<" height "<<imgheight<<std::endl;
                     cl_mem img = clCreateImage2D(ctx,CL_MEM_READ_WRITE,&format,imgwidth,imgheight,0,NULL,NULL);
                     abufsMem[index] = img;
                 }else{
@@ -536,6 +537,7 @@ bool raijinGemmExecCopy(RaijinGemmPlan *plan,
                 //std::cout<<"raijinGemmExecCopy: A isAlloc "<<isAlloc<<" isCopy "<<isCopy<<" isTrans "<<isTrans<<" isImg "<<plan->optparams.imageA<<std::endl;
                 if(isAlloc && isCopy){
                     if(plan->optparams.imageA){
+						//std::cout<<"Copying A to image"<<endl;
                         evt = raijinCopyToImg<T>(copyObj,q,bufA,Anew,simd,startRow,endRow,startCol,endCol,lda);
                     }else{
                         //std::cout<<"raijinExecGemmCopy: Dispatching A copy "<<startRow<<" "<<" "<<endRow<<" "<<startCol<<" "<<endCol<<std::endl;
@@ -584,6 +586,7 @@ bool raijinGemmExecCopy(RaijinGemmPlan *plan,
                 //std::cout<<"raijinGemmExecCopy: B isAlloc "<<isAlloc<<" isCopy "<<isCopy<<" isTrans "<<isTrans<<" isImg "<<plan->optparams.imageB<<std::endl;
                 if(isAlloc && isCopy){
                     if(plan->optparams.imageB){
+						//std::cout<<"Copying B to image"<<endl;
                         evt = raijinCopyToImg<T>(copyObj,q,bufB,Bnew,simd,startRow,endRow,startCol,endCol,ldb);
 
                     }else{
@@ -646,7 +649,7 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
     cl_device_type dvctype;
     clGetDeviceInfo(dvc,CL_DEVICE_TYPE,sizeof(dvctype),&dvctype,NULL);
     const int msize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024:10000;
-    
+    	RaijinGemmPlan *plan = raijinGetGemmPlan<T>(optparams,ctx,dvc,order,transA,transB,M,N,K,lda,ldb,msize);
 	const int imax = plan->tiles.ivals.size()-1;
     const int jmax = plan->tiles.jvals.size()-1;
     const int kmax = plan->tiles.kvals.size()-1;
@@ -654,7 +657,6 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
 	cl_event scaleEvt;
 	if(ntiles>1) scaleEvt = raijinScale<T>(scaleObj,q,C,M,N,ldc,beta);
 
-	RaijinGemmPlan *plan = raijinGetGemmPlan<T>(optparams,ctx,dvc,order,transA,transB,M,N,K,lda,ldb,msize);
 	cleaner->plan = plan;
     cl_event copyEvt=NULL;
     raijinGemmExecCopy<T>(plan,q,cleaner,A,B,C,ldc,true,true,&copyEvt,transObj,copyObj,scaleObj);

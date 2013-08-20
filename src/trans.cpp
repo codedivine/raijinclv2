@@ -122,6 +122,7 @@ RaijinTranspose::RaijinTranspose(cl_device_id device, cl_context context):dvc(de
             bool ret = createRealTrans(simdw[j],1,1,false,toImg,false,res,false);
             if(ret){
                 cl_kernel krnl;
+				if(simdw[j]==4) cout<<res<<endl;
                 ret = buildKernel(dvc,ctx,res,&krnl);
                 if(ret){
                     sgkernels[i][j] = krnl;
@@ -574,7 +575,7 @@ static cl_kernel createCopyKernelImg(bool isDouble,bool isComplex,int simd,cl_co
     ss<<"__kernel void copyKernel(__global const "<<elemtype<<" *input,__write_only image2d_t output,";
     ss<<"int startRow,int endRow,int startCol,int endCol,int lda){"<<endl;
     ss<<"const unsigned int i = get_global_id(1); const unsigned int j = get_global_id(0);"<<endl;
-    for(int i=0;i<simd;i++) ss<<" "<<elemtype<<" inval"<<i<<" = input[(i+startRow)*lda+(j+startCol)*"<<simd<<"+"<<i<<"];"<<endl;
+    for(int i=0;i<simd;i++) ss<<" "<<elemtype<<" inval"<<i<<" = input[(i+startRow)*lda+startCol + j*"<<simd<<"+"<<i<<"];"<<endl;
     if(isDouble){
         if(isComplex) ss<<"double2 outVal = inval0;"<<endl;
         else{
@@ -602,6 +603,7 @@ static cl_kernel createCopyKernelImg(bool isDouble,bool isComplex,int simd,cl_co
 
     ss<<"}"<<endl;
     string kernelstr = ss.str();
+	if(simd==4) cout<<kernelstr<<endl;
     const char *kernelcstr = kernelstr.c_str();
     size_t ksize = kernelstr.size();
 	cl_int errcode1,errcode2,errcode3;
@@ -646,7 +648,7 @@ RaijinCopy::RaijinCopy(cl_context context, cl_device_id device):ctx(context),dvc
 
 static cl_event dispatchCopyBuf(cl_command_queue q, cl_mem input, cl_mem output, int startRow, int endRow, int startCol, int endCol,
                                 int lda,cl_kernel krnl,int simd=1){
-    //cout<<"dispatchCopyBuf "<<startRow<<" "<<endRow<<" "<<startCol<<" "<<endCol<<" "<<lda<<" "<<simd<<endl;
+   // cout<<"dispatchCopyBuf "<<startRow<<" "<<endRow<<" "<<startCol<<" "<<endCol<<" "<<lda<<" "<<simd<<endl;
 	cl_int kcode0,kcode1,kcode2,kcode3,kcode4,kcode5,kcode6;
     kcode0 = clSetKernelArg(krnl,0,sizeof(cl_mem),&input);
     kcode1 = clSetKernelArg(krnl,1,sizeof(cl_mem),&output);
@@ -690,6 +692,7 @@ cl_event RaijinCopy::scopyToImg(cl_command_queue q, cl_mem input, cl_mem output,
     if(simd==1) krnl = simg[0];
     if(simd==2) krnl = simg[1];
     if(simd==4) krnl = simg[2];
+	//scout<<"RaijinCopy::scopyToImg: "<<simd<<" "<<startRow<<" "<<endRow<<" "<<startCol<<" "<<endCol<<endl;
     return dispatchCopyBuf(q,input,output,startRow,endRow,startCol,endCol,lda,krnl,simd);
 }
 
