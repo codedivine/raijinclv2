@@ -226,7 +226,7 @@ bool genKernelTNOff(int lsizex,
 					int row = x*simdwidth + xoff;
 					for(int w=0;w<wtile/simdwidth; w++){
 						//if(isDouble) ss<<"#ifndef FP_FAST_FMAF"<<endl;
-						if(!isDouble){
+						if(false){
 							ss<<"  sum"<<row<<"_"<<w<<" += "<<"a"<<x<<"_"<<y;
 							if(simdwidth>1){
 								ss<<".s";
@@ -234,7 +234,7 @@ bool genKernelTNOff(int lsizex,
 							}
 							ss<<"*b"<<w<<"_"<<y<<";\n";
 						}
-						if(isDouble){
+						if(true){
 							//ss<<"#else"<<endl;
 							ss<<"  sum"<<row<<"_"<<w<<" = fma( "<<"a"<<x<<"_"<<y;
 							if(simdwidth>1){
@@ -1645,12 +1645,12 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 	if(errcode!=CL_SUCCESS) cout<<"Error creating queue"<<endl;
 	typedef typename T::realtype realtype;
 	size_t size = sizeof(realtype)*N*N;
-	int htiles[] = {2,2,4,4,8,4,8,16,4};
-	int wtiles[] = {2,4,2,4,4,8,8,4,16};
-	int ktiles[] = {1,2,4,8,16,32};
+	int htiles[] = {6,8,4,8};
+	int wtiles[] = {6,4,8,8};
+	int ktiles[] = {1,2,4,6,8,16,32};
 	int simdwidths[] = {1,2,4,8};
-	int lsizesX[] = {2,2,4,4,4,8,8,4,16};
-	int lsizesY[] = {2,4,2,4,8,4,8,16,4};
+	int lsizesX[] = {8,4,16,6,16,8,16};
+	int lsizesY[] = {8,16,4,16,6,16,8};
 	int unrolls[] = {1,2,4,8};
 	bool storeA[] = {true, false};
 	bool storeB[] = {true, false};
@@ -1686,17 +1686,17 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 
 	const int minImgIdx = (dvctype==CL_DEVICE_TYPE_GPU) ? 0 : 1;
 	//const int minImgIdx = 1;
-	//const int minLmemIdx = (ltype==CL_LOCAL) ? 0 : 1;
-	const int minLmemIdx = 1;
+	const int minLmemIdx = (ltype==CL_LOCAL) ? 0 : 1;
+	//const int minLmemIdx = 1;
 
 	double bestCpuPart = 0;
 
-	for (int i = 6; i < 7; i++) {
-		for (int j = 6; j < 8; j++) {
-			for (int simdidx = 2; simdidx < 4;simdidx++) {
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 7; j++) {
+			for (int simdidx = 0; simdidx < 3;simdidx++) {
 				for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
-					for(int sa = minLmemIdx ; sa<2; sa++){
-						for(int sb = minLmemIdx; sb<2 ; sb++){
+					for(int sa = minLmemIdx ; sa<1; sa++){
+						for(int sb = minLmemIdx; sb<1 ; sb++){
 							for(int imgAidx=minImgIdx; imgAidx<2; imgAidx++){
 								for(int imgBidx=minImgIdx; imgBidx<2; imgBidx++){
 									for(int codelet=0;codelet<6;codelet++){
@@ -1881,7 +1881,8 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 											candidate.imageB = useImageB;
 
 											double gflops;
-											size_t tuneSize = (dvctype==CL_DEVICE_TYPE_CPU)? 1024 : 2048;
+											size_t tuneSize = 2048;
+											if( (((wtile*ly)%6)==0) || (((htile*lx)%6)==0) ) tuneSize = 2304;
 											int cpuPart;
 #ifdef RAIJIN_EXPERIMENTAL
 											gflops = testGemm<T>(tuneSize, dvc, ctx, krnl,candidate,transObj,copyObj,scaleObj,true,&cpuPart);
