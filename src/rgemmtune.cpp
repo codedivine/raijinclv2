@@ -236,12 +236,25 @@ bool genKernelTNOff(int lsizex,
 						}
 						if(true){
 							//ss<<"#else"<<endl;
+
 							ss<<"  sum"<<row<<"_"<<w<<" = fma( "<<"a"<<x<<"_"<<y;
 							if(simdwidth>1){
 								ss<<".s";
 								for(int m=0;m<simdwidth;m++) ss<<xoff;
 							}
 							ss<<",b"<<w<<"_"<<y<<",sum"<<row<<"_"<<w<<");\n";
+							/*if(simdwidth==1){
+								ss<<"  sum"<<row<<"_"<<w<<" = fma( "<<"a"<<x<<"_"<<y;
+								ss<<",b"<<w<<"_"<<y<<",sum"<<row<<"_"<<w<<");\n";
+							}else{
+								for(int m=0;m<simdwidth;m++){
+									ss<<"  sum"<<row<<"_"<<w<<".s"<<m<<" = fma( ";
+									ss<<"a"<<x<<"_"<<y<<".s"<<xoff;
+									ss<<",b"<<w<<"_"<<y<<".s"<<m;
+									ss<<",sum"<<row<<"_"<<w<<".s"<<m<<");\n";
+								}
+							}*/
+
 							//ss<<"#endif"<<endl;
 						}
 					}
@@ -1645,12 +1658,12 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 	if(errcode!=CL_SUCCESS) cout<<"Error creating queue"<<endl;
 	typedef typename T::realtype realtype;
 	size_t size = sizeof(realtype)*N*N;
-	int htiles[] = {6,8,4,8};
-	int wtiles[] = {6,4,8,8};
-	int ktiles[] = {1,2,4,6,8,16,32};
+	int htiles[] = {4,4,8,8};
+	int wtiles[] = {4,8,4,8};
+	int ktiles[] = {1,2,4,8,16};
 	int simdwidths[] = {1,2,4,8};
-	int lsizesX[] = {8,4,16,6,16,8,16};
-	int lsizesY[] = {8,16,4,16,6,16,8};
+	int lsizesX[] = {4,8,8,4,16,8,16,16};
+	int lsizesY[] = {8,4,8,16,4,16,8,16};
 	int unrolls[] = {1,2,4,8};
 	bool storeA[] = {true, false};
 	bool storeB[] = {true, false};
@@ -1692,7 +1705,7 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 	double bestCpuPart = 0;
 
 	for (int i = 0; i < 4; i++) {
-		for (int j = 0; j < 7; j++) {
+		for (int j = 0; j < 8; j++) {
 			for (int simdidx = 0; simdidx < 3;simdidx++) {
 				for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
 					for(int sa = minLmemIdx ; sa<1; sa++){
@@ -1711,6 +1724,8 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 										bool useImageB = imgB[imgBidx];
 										const int simd = simdwidths[simdidx];
 										//if(simd>vecWidth) continue;
+										int nreg = wtile*htile*sizeof(realtype)/sizeof(float);
+										if(nreg>=128) continue;
 
 										//if(dvctype==CL_DEVICE_TYPE_CPU && simd!=vecWidth) continue;
 										if(dvctype==CL_DEVICE_TYPE_GPU){
@@ -1881,8 +1896,12 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 											candidate.imageB = useImageB;
 
 											double gflops;
+#ifdef RAIJIN_EXPERIMENTAL
+											size_t tuneSize = 3072;
+#else
 											size_t tuneSize = 2048;
 											if( (((wtile*ly)%6)==0) || (((htile*lx)%6)==0) ) tuneSize = 2304;
+#endif
 											int cpuPart;
 #ifdef RAIJIN_EXPERIMENTAL
 											gflops = testGemm<T>(tuneSize, dvc, ctx, krnl,candidate,transObj,copyObj,scaleObj,true,&cpuPart);
