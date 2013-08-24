@@ -1339,22 +1339,22 @@ string genCmulFuncs(bool isDouble){
 	}
     ss<<dtype<<"2 mulComplex1("<<dtype<<"2 a,"<<dtype<<"2 b){"<<endl;
     ss<<dtype<<"2 c;"<<endl;
-    if(isDouble) ss<<"#ifndef FP_FAST_FMAF"<<endl;
-    ss<<"c.x = a.x*b.x - a.y*b.y;"<<endl;
-    if(isDouble){
-        ss<<"#else"<<endl;
+    //if(isDouble) ss<<"#ifndef FP_FAST_FMAF"<<endl;
+    //ss<<"c.x = a.x*b.x - a.y*b.y;"<<endl;
+    //if(isDouble){
+        //ss<<"#else"<<endl;
         ss<<dtype<<" temp = -a.y*b.y;"<<endl;
         ss<<"c.x = fma(a.x,b.x,temp);"<<endl;
-        ss<<"#endif"<<endl;
-    }
-    if(isDouble) ss<<"#ifndef FP_FAST_FMAF"<<endl;
-    ss<<"c.y = a.x*b.y + a.y*b.x;"<<endl;
-    if(isDouble){
-        ss<<"#else"<<endl;
+        //ss<<"#endif"<<endl;
+    //}
+    //if(isDouble) ss<<"#ifndef FP_FAST_FMAF"<<endl;
+    //ss<<"c.y = a.x*b.y + a.y*b.x;"<<endl;
+    //if(isDouble){
+        //ss<<"#else"<<endl;
         ss<<dtype<<" temp2 = a.y*b.x;"<<endl;
         ss<<"c.y = fma(a.x,b.y,temp2);"<<endl;
-        ss<<"#endif"<<endl;
-    }
+        //ss<<"#endif"<<endl;
+    //}
     ss<<"return c;\n}"<<endl;
 
     //mulComplex2
@@ -1412,12 +1412,12 @@ static void tuneGemmComplex(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel
     if(errcode!=CL_SUCCESS) cout<<"Error creating queue"<<endl;
     typedef typename T::ctype ctype;
     size_t size = sizeof(ctype)*N*N;
-    int htiles[] = {2,4,4,8,4,8,16,4};
-    int wtiles[] = {2,2,4,4,8,8,4,16};
+    int htiles[] = {2,4,4,8,4};
+    int wtiles[] = {4,2,4,4,8};
     int ktiles[] = {1,2,4,8,16,32};
     int simdwidths[] = {1,2,4,8};
-    int lsizesX[] = {8,4,16,16};
-    int lsizesY[] = {8,16,4,16};
+    int lsizesX[] = {4,8,8,4,16,16};
+    int lsizesY[] = {8,4,8,16,4,16};
     int unrolls[] = {1,2,4,8};
     bool storeA[] = {true, false};
     bool storeB[] = {true, false};
@@ -1441,14 +1441,14 @@ static void tuneGemmComplex(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel
     else clGetDeviceInfo(dvc,CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT,sizeof(cl_uint),&vecWidth,NULL);
     bool imgA[] = {true,false};
     bool imgB[] = {true,false};
-    for (int i = 2; i < 6; i++) {
-        for (int j = 0; j < 3; j++) {
-            for (int simdidx = 1; simdidx < 2;simdidx++) {
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 5; j++) {
+            for (int simdidx = 0; simdidx < 2;simdidx++) {
                 for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
-                    for(int sa = 1 ; sa<2; sa++){
-                        for(int sb = 1; sb <2 ; sb++){
-                            for(int imgAidx=1;imgAidx<2;imgAidx++){
-                                for(int imgBidx=1;imgBidx<2;imgBidx++){
+                    for(int sa = 0 ; sa<1; sa++){
+                        for(int sb = 0; sb <1 ; sb++){
+                            for(int imgAidx=0;imgAidx<2;imgAidx++){
+                                for(int imgBidx=0;imgBidx<2;imgBidx++){
 
                                     //if(T::isDouble() && simdidx>0) continue;
 
@@ -1474,7 +1474,8 @@ static void tuneGemmComplex(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel
                                         if(T::isDouble() && simd>2) continue;
                                         else if(!(T::isDouble()) && simd>4) continue;
                                     }
-                                    //int regest = (htile * wtile + htile * simd * u + wtile * simd * u);
+                                    int regest = 2*(htile * wtile + htile * simd + wtile * simd);
+									if(regest>128) continue;
 
                                     string dtype = T::name();
                                     int lx, ly;
