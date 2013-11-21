@@ -1708,8 +1708,8 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 		for (int j = 0; j < 8; j++) {
 			for (int simdidx = 0; simdidx < 3;simdidx++) {
 				for (int ktileidx = 0; ktileidx < 5; ktileidx++) {
-					for(int sa = minLmemIdx ; sa<1; sa++){
-						for(int sb = minLmemIdx; sb<1 ; sb++){
+					for(int sa = minLmemIdx ; sa<2; sa++){
+						for(int sb = minLmemIdx; sb<2 ; sb++){
 							for(int imgAidx=minImgIdx; imgAidx<2; imgAidx++){
 								for(int imgBidx=minImgIdx; imgBidx<2; imgBidx++){
 									for(int codelet=0;codelet<6;codelet++){
@@ -1737,7 +1737,7 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 
 										if(dvctype==CL_DEVICE_TYPE_CPU || dvctype==CL_DEVICE_TYPE_ACCELERATOR){
 											if(codelet!=NTCons) continue;
-											isAggregate = true;
+											//isAggregate = true;
 										}
 
 										//int regest = (htile * wtile + htile * simd * u + wtile * simd * u);

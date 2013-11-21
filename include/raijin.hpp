@@ -15,7 +15,6 @@
 #ifndef RAIJINCL_H
 #define RAIJINCL_H
 
-#define RAIJIN_EXPERIMENTAL
 #ifdef RAIJIN_EXPERIMENTAL
 #define RAIJIN_AMD
 
