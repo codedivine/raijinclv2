@@ -71,6 +71,7 @@ extern "C"{
 #include <fstream>
 #include <vector>
 #include "rtimer.hpp"
+#include "json/json.h"
 
 namespace RaijinCL{
 
@@ -98,7 +99,7 @@ struct RaijinGemmOptKernel{
 };
 
 std::istream& operator>>(std::istream &stream,RaijinGemmOptKernel& krnl);
-std::ostream& operator<<(std::ostream &stream,RaijinGemmOptKernel krnl);
+std::ostream& operator<<(std::ostream &stream,const RaijinGemmOptKernel& krnl);
 
 class RaijinCopy{
     cl_context ctx;
@@ -184,10 +185,12 @@ struct RaijinTransOpt{
     int lx;
     int ly;
     std::string kernel;
+    bool isImg;
+    int simdw;
+    Json::Value toJson() const;
+    RaijinTransOpt(const Json::Value &val);
+    RaijinTransOpt(): kernel(),lx(0),ly(0),isImg(false),simdw(0){}
 };
-
-std::istream& operator>>(std::istream &stream,RaijinTransOpt& krnl);
-std::ostream& operator<<(std::ostream &stream,RaijinTransOpt krnl);
 
 class RaijinTranspose{
 public:

@@ -20,6 +20,7 @@
 #include <cstring>
 #include <CL/cl.h>
 #include "rtimer.hpp"
+#include "json/json.h"
 using namespace RaijinCL;
 using namespace std;
 
@@ -114,7 +115,8 @@ bool RaijinCL::isAmd64(cl_device_id dvc){
 }
 
 string RaijinCL::raijinGetProfileFileName(cl_device_id dvc, string prefix){
-	string dpath = getenv("RAIJIN_TUNE_PATH");
+    char *dpathPtr = getenv("RAIJIN_TUNE_PATH");
+    string dpath( dpathPtr==NULL ? "" : dpathPtr);
 	cl_uint vendorid;
 	const size_t sizename = 100;
 	char devname[sizename];
@@ -144,51 +146,10 @@ string RaijinCL::raijinGetProfileFileName(cl_device_id dvc, string prefix){
 	fnamestream<<vendorid<<"_"<<modname;
     //cout<<fnamestream.str()<<endl;
     string fname = prefix+fnamestream.str();
-	dpath = dpath + fname;
+    dpath = dpath + fname + ".json";
 	return dpath;
 }
 
-
-istream& RaijinCL::operator>>(istream &stream,RaijinGemmOptKernel& krnl){
-	string line;
-	//Must be "start_opt_kernel"
-	getline(stream,line);
-	getline(stream,krnl.dvcname);
-	//cout<<"Found device name "<<krnl.dvcname<<endl;
-	stream>>krnl.lsizex;
-	stream>>krnl.lsizey;
-	stream>>krnl.htile;
-	stream>>krnl.wtile;
-	stream>>krnl.ktile;
-	stream>>krnl.simdwidth;
-    //cout<<"operator>>: Now reading orientation"<<endl;
-    //Must be "orientation"
-    stream>>line;
-    stream>>krnl.transA;
-    stream>>krnl.transB;
-
-	//must be isImage
-	stream>>line;
-	stream>>krnl.imageA;
-	stream>>krnl.imageB;
-    //cout<<"Read orientation: "<<line<<" "<<krnl.transA<<" "<<krnl.transB<<endl;
-
-    stream>>krnl.kname;
-	//cout<<"Kernel name "<<krnl.kname<<endl;
-	//Must be "start_kernel"
-	stream>>line;
-	//cout<<"start_kernel "<<line<<endl;
-	stringstream kstream;
-	while(true){
-		getline(stream,line);
-		if(line.compare("end_kernel")==0) break;
-		kstream<<line<<" "<<endl;
-	}
-	krnl.kernel = kstream.str();
-	//Must be "end_opt_kernel"
-	getline(stream,line);
-	return stream;
-}
 
 template<>
 bool RaijinCL::raijinIsDouble<cl_double2>(){
@@ -200,19 +161,42 @@ bool RaijinCL::raijinIsDouble<cl_double>(){
     return true;
 }
 
+ostream& RaijinCL::operator<<(ostream& stream,const RaijinGemmOptKernel& krnl){
+    Json::Value root;
+    Json::StyledWriter writer;
+    root["dvcname"] = krnl.dvcname;
+    root["lsizex"] = krnl.lsizex;
+    root["lsizey"] = krnl.lsizey;
+    root["htile"] = krnl.htile;
+    root["wtile"] = krnl.wtile;
+    root["ktile"] = krnl.ktile;
+    root["simdwidth"] = krnl.simdwidth;
+    root["transA"] = krnl.transA;
+    root["transB"] = krnl.transB;
+    root["imageA"] = krnl.imageA;
+    root["imageB"] = krnl.imageB;
+    root["kname"] = krnl.kname;
+    root["kernel"] = krnl.kernel;
+    stream<<writer.write(root)<<endl;
+    return stream;
+}
 
-ostream& RaijinCL::operator<<(ostream &stream,RaijinGemmOptKernel krnl){
-	stream<<"start_opt_kernel"<<endl;
-	stream<<krnl.dvcname<<endl;
-	stream<<krnl.lsizex<<" "<<krnl.lsizey<<" "<<krnl.htile<<" "<<krnl.wtile<<" "<<krnl.ktile<<" "<<krnl.simdwidth<<endl;
-    stream<<"orientation "<<krnl.transA<<" "<<krnl.transB<<endl;
-	stream<<"isImage "<<krnl.imageA<<" "<<krnl.imageB<<endl;
-	stream<<krnl.kname<<endl;
-	stream<<"start_kernel"<<endl;
-	stream<<krnl.kernel<<endl;
-	stream<<"end_kernel"<<endl;
-	stream<<"end_opt_kernel"<<endl;
-	return stream;
+istream& RaijinCL::operator>>(istream &stream,RaijinGemmOptKernel& krnl){
+    Json::Value root;
+    stream>>root;
+    krnl.lsizex = root.get("lsizex",0).asInt();
+    krnl.lsizey = root.get("lsizey",0).asInt();
+    krnl.htile = root.get("htile",0).asInt();
+    krnl.wtile = root.get("wtile",0).asInt();
+    krnl.ktile = root.get("ktile",0).asInt();
+    krnl.simdwidth = root.get("simdwidth",0).asInt();
+    krnl.transA = root.get("transA",false).asBool();
+    krnl.transB = root.get("transB",false).asBool();
+    krnl.imageA = root.get("imageA",false).asBool();
+    krnl.imageB = root.get("imageB",false).asBool();
+    krnl.kname = root.get("kname","").asString();
+    krnl.kernel = root.get("kernel","").asString();
+    return stream;
 }
 
 void RaijinCL::printProgramBinary(cl_program prg){

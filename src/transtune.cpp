@@ -1,6 +1,7 @@
 #include "raijin.hpp"
 #include <sstream>
 #include <fstream>
+#include <json/json.h>
 using namespace std;
 using namespace RaijinCL;
 
@@ -174,6 +175,9 @@ void RaijinTranspose::tuneStrans(cl_device_id dvc){
 
 
     //for each output type
+
+    Json::Value root(Json::objectValue);
+    Json::Value array(Json::arrayValue);
 	for(unsigned int toImgIdx=0;toImgIdx<2;toImgIdx++){
 		 //for each simdwidth
 		for(unsigned int simdIdx=0;simdIdx<4;simdIdx++){
@@ -196,23 +200,28 @@ void RaijinTranspose::tuneStrans(cl_device_id dvc){
                             opt.kernel = kernel;
                             opt.lx = lx[lidx];
                             opt.ly = ly[lidx];
+                            opt.isImg = toImg[toImgIdx];
+                            opt.simdw = simdw[simdIdx];
 						}
 					}
 
 				}
 			}
             if(inited){
+                array.append(opt.toJson());
                 //cout<<"Best kernel for "<<simdw[simdIdx]<<" toImg "<<toImg[toImgIdx]<<" "<<best<<endl;
                 //cout<<opt.kernel<<endl;
-                ofile<<"start_case"<<endl;
+                /*ofile<<"start_case"<<endl;
                 ofile<<toImg[toImgIdx]<<" "<<simdw[simdIdx]<<endl;
                 ofile<<opt;
-                ofile<<"end_case"<<endl;
+                ofile<<"end_case"<<endl;*/
             }
 
 		}
 	}
-    RaijinTranspose t(dvc,ctx);
+    root["cases"] = array;
+    ofile<<root<<endl;
+    //RaijinTranspose t(dvc,ctx);
     clReleaseContext(ctx);
 }
 
@@ -229,16 +238,18 @@ void RaijinTranspose::tuneDtrans(cl_device_id dvc){
     ofstream ofile(dpath.c_str());
     //write information about the optimal transpose routine
 	bool toImg[] = {true,false};
-	int simdw[] = {1,2,4,8};
+    int simdw[] = {1,2,4};
 	bool useLocalMem[] = {true,false};
 	int lx[] = {4,8,4,16,16};
 	int ly[] = {4,8,16,4,16};
 
+    Json::Value root(Json::objectValue);
+    Json::Value array(Json::arrayValue);
 
     //for each output type
 	for(unsigned int toImgIdx=0;toImgIdx<2;toImgIdx++){
 		 //for each simdwidth
-		for(unsigned int simdIdx=0;simdIdx<3;simdIdx++){
+        for(unsigned int simdIdx=0;simdIdx<2;simdIdx++){
 			double best = 0;
             RaijinTransOpt opt;
             bool inited = false;
@@ -257,6 +268,8 @@ void RaijinTranspose::tuneDtrans(cl_device_id dvc){
                             opt.kernel = kernel;
                             opt.lx = lx[lidx];
                             opt.ly = ly[lidx];
+                            opt.isImg = toImg[toImgIdx];
+                            opt.simdw = simdw[simdIdx];
 							best = bw;
                             inited = true;
 						}
@@ -265,15 +278,13 @@ void RaijinTranspose::tuneDtrans(cl_device_id dvc){
 				}
 			}
             if(inited){
-                ofile<<"start_case"<<endl;
-                ofile<<toImg[toImgIdx]<<" "<<simdw[simdIdx]<<endl;
-                ofile<<opt;
-                ofile<<"end_case"<<endl;
+                array.append(opt.toJson());
             }
 
 		}
     }
-    RaijinTranspose t(dvc,ctx);
+    root["cases"] = array;
+    ofile<<root<<endl;
     clReleaseContext(ctx);
 
 }
@@ -296,7 +307,8 @@ void RaijinTranspose::tuneCtrans(cl_device_id dvc){
 	int lx[] = {4,8,4,16,16};
 	int ly[] = {4,8,16,4,16};
 
-
+    Json::Value root(Json::objectValue);
+    Json::Value array(Json::arrayValue);
     //for each output type
 	for(unsigned int toImgIdx=0;toImgIdx<2;toImgIdx++){
 		 //for each simdwidth
@@ -319,6 +331,8 @@ void RaijinTranspose::tuneCtrans(cl_device_id dvc){
                             opt.kernel = kernel;
                             opt.lx = lx[lidx];
                             opt.ly = ly[lidx];
+                            opt.isImg = toImg[toImgIdx];
+                            opt.simdw = simdw[simdIdx];
 							best = bw;
                             inited = true;
 						}
@@ -327,14 +341,13 @@ void RaijinTranspose::tuneCtrans(cl_device_id dvc){
 				}
 			}
             if(inited){
-                ofile<<"start_case"<<endl;
-                ofile<<toImg[toImgIdx]<<" "<<simdw[simdIdx]<<endl;
-                ofile<<opt;
-                ofile<<"end_case"<<endl;
+               array.append(opt.toJson());
             }
 
 		}
     }
+    root["cases"] = array;
+    ofile<<root<<endl;
     RaijinTranspose t(dvc,ctx);
     clReleaseContext(ctx);
 
@@ -359,7 +372,8 @@ void RaijinTranspose::tuneZtrans(cl_device_id dvc){
 	int lx[] = {4,8,4,16,16};
 	int ly[] = {4,8,16,4,16};
 
-
+    Json::Value root(Json::objectValue);
+    Json::Value array(Json::arrayValue);
     //for each output type
 	for(unsigned int toImgIdx=0;toImgIdx<2;toImgIdx++){
 		 //for each simdwidth
@@ -382,6 +396,8 @@ void RaijinTranspose::tuneZtrans(cl_device_id dvc){
                             opt.kernel = kernel;
                             opt.lx = lx[lidx];
                             opt.ly = ly[lidx];
+                            opt.isImg = toImg[toImgIdx];
+                            opt.simdw = simdw[simdIdx];
 							best = bw;
                             inited = true;
 						}
@@ -390,14 +406,13 @@ void RaijinTranspose::tuneZtrans(cl_device_id dvc){
 				}
 			}
             if(inited){
-                ofile<<"start_case"<<endl;
-                ofile<<toImg[toImgIdx]<<" "<<simdw[simdIdx]<<endl;
-                ofile<<opt;
-                ofile<<"end_case"<<endl;
+               array.append(opt.toJson());
             }
 
 		}
     }
+    root["cases"] = array;
+    ofile<<root<<endl;
     RaijinTranspose t(dvc,ctx);
     clReleaseContext(ctx);
 

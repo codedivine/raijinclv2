@@ -1,34 +1,28 @@
 #include "raijin.hpp"
 #include <sstream>
 #include <fstream>
-
+#include "json/json.h"
 using namespace std;
 using namespace RaijinCL;
 
-std::ostream& RaijinCL::operator<<(std::ostream &stream,RaijinTransOpt krnl){
-    stream<<krnl.lx<<" "<<krnl.ly<<endl;
-    stream<<"start_kernel"<<endl;
-    stream<<krnl.kernel<<endl;
-    stream<<"end_kernel"<<endl;
-	return stream;
+Json::Value RaijinTransOpt::toJson() const{
+    Json::Value val(Json::objectValue);
+    val["lx"] = lx;
+    val["ly"] = ly;
+    val["kernel"] = kernel;
+    val["isImg"] = isImg;
+    val["simdw"] = simdw;
+    return val;
 }
 
-std::istream& RaijinCL::operator>>(std::istream &stream,RaijinTransOpt& krnl){
-    stream>>krnl.lx;
-    stream>>krnl.ly;
-    string line;
-
-    stream>>line;
-    //cout<<"start_kernel "<<line<<endl;
-    stringstream kstream;
-    while(true){
-        getline(stream,line);
-        if(line.compare("end_kernel")==0) break;
-        kstream<<line<<endl;
-    }
-    krnl.kernel = kstream.str();
-	return stream;
+RaijinTransOpt::RaijinTransOpt(const Json::Value &val):kernel(){
+    lx = val.get("lx",0).asInt();
+    ly = val.get("ly",0).asInt();
+    isImg = val.get("isImg",false).asBool();
+    simdw = val.get("simdw",0).asInt();
+    kernel = val.get("kernel","").asString();
 }
+
 
 static int simdToIdx(int simdw){
     switch(simdw){
@@ -72,25 +66,19 @@ static void initTransData(cl_device_id dvc,cl_context ctx,RaijinTransOpt sparams
     ifstream ifiles(spath.c_str());
 	if(!ifiles.is_open() && ifiles.good()) return;
     int lx,ly;
-    int useImg,simdw;
     string line;
-    while(ifiles.is_open() && !ifiles.eof()){
-        getline(ifiles,line);
-        if(line.compare("start_case")!=0) continue;
-
-        ifiles>>useImg>>simdw;
-        RaijinTransOpt opt;
-        ifiles>>opt;
-        int i = (useImg)? 0:1;
-        int j = simdToIdx(simdw);
+    Json::Value root;
+    if(ifiles.is_open()) ifiles>>root;
+    Json::Value array = root["cases"];
+    for(int k=0;k<array.size();k++){
+        Json::Value obj = array[k];
+        RaijinTransOpt opt(obj);
+        int i = opt.isImg ? 0 : 1;
+        int j = simdToIdx(opt.simdw);
         sparams[i][j] = opt;
         bool built = buildKernel(dvc,ctx,opt.kernel,&skernels[i][j]);
-        //cout<<"initTransData. Case index "<<i<<","<<j<<" Kernel "<<opt.kernel<<endl;
         if(built) sinit[i][j] = true;
-        while(line.compare("end_case")!=0 && !ifiles.eof()) getline(ifiles,line);
-
     }
-
 }
 
 RaijinTranspose::RaijinTranspose(cl_device_id device, cl_context context):dvc(device),ctx(context){
