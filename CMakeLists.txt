@@ -16,7 +16,7 @@ ENDIF (WIN32)
 
 include_directories( $ENV{OPENCLINCLUDEDIR} )
 include_directories("${PROJECT_SOURCE_DIR}/include")
-file(GLOB RAIJIN_HEADERS "include/*hpp")
+file(GLOB RAIJIN_HEADERS "include/*hpp include/json/*")
 add_subdirectory(src)
 add_subdirectory(test)
 
