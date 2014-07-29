@@ -1308,13 +1308,13 @@ static bool genKernelNTCons(int lsizex, int lsizey, int htile, int wtile, int kt
 					}
 				}
 				for(int rowB=0;rowB<wtile;rowB++){
-					if(isDouble) ss<<"#ifndef FP_FAST_FMAF\n";
+                    //if(isDouble) ss<<"#ifndef FP_FAST_FMAF\n";
 					ss<<" sum"<<rowA<<"_"<<rowB<<" += a"<<rowA<<"_"<<colA<<" * b"<<rowB<<"_"<<colB<<";\n";
 					if(isDouble){
-						ss<<"#else"<<endl;
-						ss<<" sum"<<rowA<<"_"<<rowB<<" = fma(a"<<rowA<<"_"<<colA<<", b"<<rowB<<"_"<<colB<<", ";
-						ss<<" sum"<<rowA<<"_"<<rowB<<");\n";
-						ss<<"#endif"<<endl;
+                        //ss<<"#else"<<endl;
+                        //ss<<" sum"<<rowA<<"_"<<rowB<<" = fma(a"<<rowA<<"_"<<colA<<", b"<<rowB<<"_"<<colB<<", ";
+                        //ss<<" sum"<<rowA<<"_"<<rowB<<");\n";
+                        //ss<<"#endif"<<endl;
 					}
 				}
 
@@ -1346,9 +1346,11 @@ static bool genKernelNTCons(int lsizex, int lsizey, int htile, int wtile, int kt
 		}
 		for (int i = 0; i < htile; i++) {
 			for (int j = 0; j < wtile; j++) {
-				ss << "C[(i*" << htile << "+ " << i << ")*ldc + j*" << wtile << "+" << j << "]";
+                ss << "C[(i*" << htile << "+ " << i << ")*ldc + j*" << wtile << "+" << j << "]";
+                ss << " = beta";
+                ss << "*C[(i*" << htile << "+ " << i << ")*ldc + j*" << wtile << "+" << j << "]";
 				if(!isAggregate){
-					ss << "+= alpha*(";
+                    ss << "+ alpha*(";
 					for(int s=0;s<simdwidth;s++){
 						ss<<"sum"<<i<<"_"<<j;
 						if(simdwidth>1) ss<<".s"<<s;
@@ -1356,7 +1358,7 @@ static bool genKernelNTCons(int lsizex, int lsizey, int htile, int wtile, int kt
 					}
 					ss<<");\n";
 				}else{
-					ss<<" = Clocal[(i-ig*lx)*htile + "<<i<<"][(j-jg*ly)*wtile+"<<j<<"];\n";
+                    ss<<" = Clocal[(i-ig*lx)*htile + "<<i<<"][(j-jg*ly)*wtile+"<<j<<"];\n";
 				}
 			}
 		}
@@ -1441,7 +1443,7 @@ double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, R
 		clEnqueueWriteBuffer(q, bufC, CL_TRUE, 0, size, ptrC, 0, NULL, NULL);
 
 		clFinish(q);
-		const int niters = 3;
+        const int niters = 2;
 		double tdiff = 0;
 		for(int i=0;i<niters;i++){
 			RTimer rt;
@@ -1465,10 +1467,11 @@ double testGemm(unsigned int N,cl_device_id dvc,cl_context ctx,cl_kernel krnl, R
 					realtype expected = N*(0.002*i)*(0.002*j);
 					realtype val = calc - expected;
 					if(val<0) val = -val;
-					/*if(val>0.1){
-					cout<<kname<<" "<<i<<" "<<j<<" "<< val << " "<< calc << " "<< expected << endl;
-					exit(1);
-					}*/
+                    //if(val>0.01){
+                    //cout<<kname<<" "<<i<<" "<<j<<" "<< val << " "<< calc << " "<< expected << endl;
+                    //cout<<i<<" "<<j<<" "<<calc<<" "<<expected<<endl;
+                    //exit(1);
+                    //}
 					totalerror += val;
 				}
 			}
@@ -1737,6 +1740,9 @@ void tuneGemmCache(cl_context ctx, cl_device_id dvc,RaijinGemmOptKernel *optpara
 
 										if(dvctype==CL_DEVICE_TYPE_CPU || dvctype==CL_DEVICE_TYPE_ACCELERATOR){
 											if(codelet!=NTCons) continue;
+                                            if(simd!=2) continue;
+                                            if(lsizesX[j]!=8 || lsizesY[j]!=8) continue;
+                                            if(htile!=4 || wtile!=4 || ktile!=4) continue;
 											//isAggregate = true;
 										}
 

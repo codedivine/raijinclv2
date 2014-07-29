@@ -210,13 +210,14 @@ static cl_event applyTrans(cl_command_queue q,const RaijinTransOpt& opt,bool was
     size_t gsize[2],lsizeOpt[2];
     size_t *lsize = NULL;
     if(wasInited && nOutRows%opt.lx==0 && nOutCols%opt.ly==0){
+        cout<<"applyTrans: Applying opt kernel"<<endl;
         krnl = optKernel;
         lsizeOpt[1] = opt.lx;
         lsizeOpt[0] = opt.ly;
         lsize = lsizeOpt;
     }else{
         //apply generic kernel
-        //cout<<"applyTrans: Applying generic kernel"<<endl;
+        cout<<"applyTrans: Applying generic kernel"<<endl;
         krnl = genKernel;
     }
     gsize[1] = nOutRows;
@@ -224,9 +225,9 @@ static cl_event applyTrans(cl_command_queue q,const RaijinTransOpt& opt,bool was
     size_t inbufsize,outbufsize;
     clGetMemObjectInfo(input,CL_MEM_SIZE,sizeof(inbufsize),&inbufsize,NULL);
     clGetMemObjectInfo(output,CL_MEM_SIZE,sizeof(outbufsize),&outbufsize,NULL);
-    /*cout<<"applyTrans: In buffer size: "<<inbufsize<<" Out buffer size: "<<outbufsize<<endl;
+    cout<<"applyTrans: In buffer size: "<<inbufsize<<" Out buffer size: "<<outbufsize<<endl;
     cout<<"applyTrans: gsize "<<nOutCols<<" "<<nOutRows<<endl;
-    cout<<"applyTrans: "<<startRow<<" "<<endRow<<" "<<startCol<<" "<<endCol<<" "<<lda<<endl;*/
+    cout<<"applyTrans: "<<startRow<<" "<<endRow<<" "<<startCol<<" "<<endCol<<" "<<lda<<endl;
     cl_int kcode0,kcode1,kcode2,kcode3,kcode4,kcode5,kcode6;
     kcode0 = clSetKernelArg(krnl,0,sizeof(cl_mem),&input);
     kcode1 = clSetKernelArg(krnl,1,sizeof(cl_mem),&output);

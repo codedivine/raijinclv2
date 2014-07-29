@@ -31,8 +31,8 @@ using namespace std;
 #endif
 
 static const string sgemmGenKernel = "__kernel void sgemmGen(int K, float alpha, "
-		"const float __global *A, int lda, unsigned int offsetA, "
-		"const float __global *B, int ldb, unsigned int offsetB, "
+        "const float __global *A, int sa0, int sa1, unsigned int offsetA, "
+        "const float __global *B, int sb0, int sb1, unsigned int offsetB, "
 		"float beta,"
 		" __global float *C, int ldc, unsigned int offsetC){\n"
 		" int i = get_global_id(1);\n"
@@ -40,7 +40,7 @@ static const string sgemmGenKernel = "__kernel void sgemmGen(int K, float alpha,
 		" int k;\n"
 		" float sum = 0;"
 		" for(k=0;k<K;k++){"
-		"	sum += A[i*lda+k+offsetA]*B[k*ldb + j+offsetB];"
+        "	sum += A[i*sa0 + k*sa1 +offsetA]*B[j*sb0 + k*sb1 +offsetB];"
 		"}"
 		" C[i*ldc + j+offsetC] = alpha*sum + beta*C[i*ldc+j];"
 		"}";
@@ -49,9 +49,10 @@ static const string dgemmGenKernel = "#ifdef cl_khr_fp64\n"
 		"#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n"
 		"#else\n"
 		"#pragma OPENCL EXTENSION cl_amd_fp64 : enable\n"
+        "#endif\n"
         "__kernel void dgemmGen(int K, double alpha, "
-		"const double __global *A, unsigned int lda, int offsetA, "
-		"const double __global *B, unsigned int ldb, int offsetB, "
+        "const double __global *A, int sa0, int sa1,int offsetA, "
+        "const double __global *B, int sb0, int sb1,int offsetB, "
 		"double beta,"
 		" __global double *C, unsigned int ldc, int offsetC){\n"
 		" int i = get_global_id(1);\n"
@@ -59,11 +60,20 @@ static const string dgemmGenKernel = "#ifdef cl_khr_fp64\n"
 		" int k;\n"
 		" double sum = 0;"
 		" for(k=0;k<K;k++){"
-		"	sum += A[i*lda+k+offsetA]*B[k*ldb + j+offsetB];"
+        "	sum += A[i*sa0 + k*sa1 +offsetA]*B[j*sb0 + k*sb1 +offsetB];"
 		"}"
 		" C[i*ldc + j+offsetC] = alpha*sum + beta*C[i*ldc+j];"
 		"}";
 
+std::ostream& RaijinCL::operator<<(std::ostream& str,cl_double2 v){
+    str<<'('<<v.s[0]<<','<<v.s[1]<<')';
+    return str;
+}
+
+std::ostream& RaijinCL::operator<<(std::ostream& str,cl_float2 v){
+    str<<'('<<v.s[0]<<','<<v.s[1]<<')';
+    return str;
+}
 
 bool RaijinCL::supportsFp64(cl_device_id dvc){
     const int size = 10000;
@@ -184,6 +194,7 @@ ostream& RaijinCL::operator<<(ostream& stream,const RaijinGemmOptKernel& krnl){
 istream& RaijinCL::operator>>(istream &stream,RaijinGemmOptKernel& krnl){
     Json::Value root;
     stream>>root;
+    krnl.dvcname = root.get("dvcname","").asString();
     krnl.lsizex = root.get("lsizex",0).asInt();
     krnl.lsizey = root.get("lsizey",0).asInt();
     krnl.htile = root.get("htile",0).asInt();

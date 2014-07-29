@@ -37,9 +37,9 @@ double verifyPattern1(T *A,T *B, T *C,int M,int N,int K){
 			double read = C[i*N+j];
 			//if(i==1) cout<<"Read "<<read<<endl;
             double diff = abs(read-expected);
-            if(diff>1.0) {
+            if(diff>0.02) {
                 cout<<i<<" "<<j<<" "<<expected<<" "<<read<<" "<<endl;
-                //exit(1);
+                exit(1);
             }
             if(diff>sum) sum = diff;
 		}
@@ -74,7 +74,10 @@ double verifyPattern2(T *A,T *B, T *C,int M,int N,int K){
 			}
 			double read = C[i*N+j];
 			double error = abs(read-expected);
-            //if(error>1.0) cout<<i<<" "<<j<<" "<<read<<" "<<expected<<endl;
+            if(error>0.01) {
+                cout<<i<<" "<<j<<" "<<read<<" "<<expected<<endl;
+                exit(1);
+            }
             double diff = abs(read-expected);
             if(diff>sum) sum = diff;
 		}
@@ -578,7 +581,7 @@ int main(int argc, char **argv){
 
 		cl_device_id dvcs[20];
 		cl_uint num_dvcs;
-		clGetDeviceIDs(platform,CL_DEVICE_TYPE_GPU,20,dvcs,&num_dvcs);
+        clGetDeviceIDs(platform,CL_DEVICE_TYPE_ALL,20,dvcs,&num_dvcs);
 		if(devid>=num_dvcs || devid<0){
 			cout<<"Error. Device ID not in range"<<endl;
 			exit(1);

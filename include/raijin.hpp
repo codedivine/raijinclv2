@@ -378,7 +378,7 @@ void raijinPrivateAllocStuff(RaijinGemmPlan::ExecBufs& execbuf,
             const cl_uint Knew = kvals[k+1]-kvals[k];
             cl_mem Anew;
             bool isAlloc = true;
-            if(!useImageA && opttransA==transA && lda<2*msize && imax==1 && kmax==1){
+            if(!useImageA && opttransA==transA && lda<2*msize && imax==1 && kmax==1 && lda%simd==0){
                 isAlloc = false;
             }
 
@@ -646,7 +646,7 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
                         cl_uint ldc,
                         RaijinTranspose *transObj,RaijinCopy *copyObj,RaijinScale *scaleObj){
 	using namespace std;
-                           //cout<<"Inside applyOpt"<<endl;
+    //std::cout<<"Inside applyOpt"<<std::endl;
     const size_t elemsize = sizeof(T);
     cl_device_type dvctype;
     clGetDeviceInfo(dvc,CL_DEVICE_TYPE,sizeof(dvctype),&dvctype,NULL);
@@ -736,8 +736,9 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
                 kcode6 = clSetKernelArg(krnl, 6, sizeof(cl_uint), &Kd);
                 kcode7 = clSetKernelArg(krnl, 7, elemsize, &alpha);
                 T newbeta = raijinGetOne<T>();
-                //if(k==0) newbeta = beta;
-                kcode8 = clSetKernelArg(krnl, 8, elemsize, &beta);
+                if(ntiles==1) newbeta = beta;
+                //cout<<"ntiles is "<<ntiles<<endl;
+                kcode8 = clSetKernelArg(krnl, 8, elemsize, &newbeta);
 				cl_event evt;
                // cout<<"Dispatching "<<gsize[1]<<" "<<gsize[0]<<" "<<lsize[1]<<" "<<lsize[0]<<endl;
 				//system("PAUSE");
@@ -759,9 +760,10 @@ cl_event raijinApplyOpt(cl_command_queue q, RaijinCleaner *cleaner,cl_kernel krn
             //clReleaseMemObject(Cnew);
         }
     }
-	//clFinish(q);
+    //clFinish(q);
 	//rt.stop();
-	//std::cout<<"applyOpt: Time to finish kernels "<<rt.getDiff()<<std::endl;
+    //std::cout<<"Finished raijinApplyOpt"<<std::endl;
+    //std::cout<<"applyOpt: Time to finish kernels "<<rt.getDiff()<<std::endl;
     return lastEvt;
 
 }
@@ -848,7 +850,7 @@ RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context context,cl_device_id device
         gemm->ctx = context;
         clRetainContext(context);
         gemm->dvc = device;
-        cl_int errcode;
+        cl_int errcode,errcode2;
         const size_t len = gemm->optkernel.kernel.length();
         const char *prgstr = gemm->optkernel.kernel.c_str();
         //cout<<"Kernel:"<<gemm->optkernel.kernel<<endl;
@@ -863,9 +865,19 @@ RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context context,cl_device_id device
         const char *genString = genKernel.c_str();
         const size_t genLength = genKernel.length();
         gemm->genprg = clCreateProgramWithSource(gemm->ctx, 1, &genString, &genLength, &errcode);
-        bldcode = clBuildProgram(gemm->genprg, 1, &(gemm->dvc), "", NULL, NULL);
-        std::string kname = getGemmname<T>();
-        gemm->gencompiled = clCreateKernel(gemm->genprg, kname.c_str() , &errcode);
+        bldcode = clBuildProgram(gemm->genprg, 1, &(gemm->dvc), "-g", NULL, NULL);        
+        std::string kname = getGemmname<T>()+"Gen";
+        gemm->gencompiled = clCreateKernel(gemm->genprg, kname.c_str() , &errcode2);
+
+        if(errcode!=CL_SUCCESS || errcode2!=CL_SUCCESS || bldcode!=CL_SUCCESS){
+            size_t retbytes;
+            char *log;
+            clGetProgramBuildInfo(gemm->genprg,gemm->dvc,CL_PROGRAM_BUILD_LOG,0,NULL,&retbytes);
+            log = new char[retbytes+1];
+            clGetProgramBuildInfo(gemm->genprg,gemm->dvc,CL_PROGRAM_BUILD_LOG,retbytes,log,NULL);
+            std::cout<<log<<std::endl;
+        }
+        std::cout<<"RaijinGemm::getInstance: gencompiled build codes are "<<errcode<<" "<<bldcode<<" "<<errcode2<<std::endl;
         gemm->transObj = new RaijinTranspose(device,context);
         gemm->copyObj = new RaijinCopy(context,device);
         gemm->scaleObj = new RaijinScale(context,device);
@@ -876,59 +888,85 @@ RaijinGemm<T> *RaijinGemm<T>::getInstance(cl_context context,cl_device_id device
     return NULL;
 }
 
+extern std::ostream& operator<<(std::ostream& str,cl_double2 v);
+extern std::ostream& operator<<(std::ostream& str,cl_float2 v);
+
 template <typename T>
-cl_event RaijinGemm<T>::applyGen(cl_command_queue q, RaijinCleaner *cleaner,enum RAIJIN_ORDER order, bool transA, bool transB, cl_uint M, cl_uint N, cl_uint K,
-        T alpha, cl_mem A, cl_uint lda, unsigned int offsetA,
-        cl_mem B, cl_uint ldb, unsigned int offsetB,
-        T beta,
-        cl_mem C, cl_uint ldc, unsigned int offsetC){
-    //cout<<"Entering applyGen "<<M<<" "<<N<<" "<<K<<endl;
+cl_event RaijinGemm<T>::applyGen(cl_command_queue q,
+                                 RaijinCleaner *cleaner,
+                                 enum RAIJIN_ORDER order,
+                                 bool transA,
+                                 bool transB,
+                                 cl_uint M,
+                                 cl_uint N,
+                                 cl_uint K,
+                                 T alpha,
+                                 cl_mem A,
+                                 cl_uint lda,
+                                 unsigned int offsetA,
+                                 cl_mem B,
+                                 cl_uint ldb,
+                                 unsigned int offsetB,
+                                 T beta,
+                                 cl_mem C,
+                                 cl_uint ldc,
+                                 unsigned int offsetC){
+    //std::cout<<"Entering applyGen "<<M<<" "<<N<<" "<<K<<std::endl;
+    //std::cout<<M<<" "<<N<<" "<<K<<" "<<offsetA<<" "<<lda<<" "<<offsetB<<" "<<ldb<<" "<<offsetC<<" "<<ldc<<std::endl;
+    //std::cout<<"alpha "<<alpha<<" beta "<<beta<<std::endl;
+    size_t Asize,Bsize,Csize;
+    clGetMemObjectInfo(A,CL_MEM_SIZE,sizeof(Asize),&Asize,NULL);
+    clGetMemObjectInfo(B,CL_MEM_SIZE,sizeof(Bsize),&Bsize,NULL);
+    clGetMemObjectInfo(C,CL_MEM_SIZE,sizeof(Csize),&Csize,NULL);
+    //std::cout<<"applyGen: Sizes are "<<Asize<<" "<<Bsize<<" "<<Csize<<std::endl;
     const size_t elemsize = sizeof(T);
     cl_kernel krnl = gencompiled;
-    cl_int kcode0, kcode1, kcode2, kcode3, kcode4, kcode5, kcode6, kcode7,kcode8,kcode9,kcode10,kcode11;
-    cl_mem opA = A;
-    if(transA){
-        //cl_event transToBuf(RaijinTranspose *trans,
-        //                    RaijinParams rp,cl_mem input,cl_mem output,int simd,int startRow,int endRow,int startCol,int endCol,int lda);
-       opA = clCreateBuffer(ctx,CL_MEM_READ_WRITE,sizeof(M*K*sizeof(T)),NULL,NULL);
-       cl_buffer_region region;
-       region.origin = offsetA;
-       region.size = ((K-1)*lda + M)*sizeof(T);
-       cl_mem subBufferA = clCreateSubBuffer(A,CL_MEM_READ_ONLY,CL_BUFFER_CREATE_TYPE_REGION,&region,NULL);
-       transToBuf<T>(transObj,q,subBufferA,opA,1,0,K,0,M,lda);
-       lda = K;
+    cl_int kcode[15];
+    cl_int sa0,sa1,sb0,sb1;
+
+    if(!transA){
+        sa0 = lda;
+        sa1 = 1;
+    }else{
+        sa0 = 1;
+        sa1 = lda;
     }
 
-    cl_mem opB = B;
-    if(transB){
-        /*B is transposed. We want to convert it to a matrix of shape K*N */
-        opB = clCreateBuffer(ctx,CL_MEM_READ_WRITE,sizeof(K*N*sizeof(T)),NULL,NULL);
-        cl_buffer_region region;
-        region.origin = offsetB;
-        region.size = ((N-1)*lda + K)*sizeof(T);
-        cl_mem subBufferB = clCreateSubBuffer(B,CL_MEM_READ_ONLY,CL_BUFFER_CREATE_TYPE_REGION,&region,NULL);
-        transToBuf<T>(transObj,q,subBufferB,opB,1,0,N,0,K,ldb);
-        ldb = K;
+    if(!transB){
+        sb0 = 1;
+        sb1 = ldb;
+    }else{
+        sb0 = ldb;
+        sb1 = 1;
     }
-    kcode0 = clSetKernelArg(krnl, 0, sizeof(cl_uint), &K);
-    kcode1 = clSetKernelArg(krnl, 1, elemsize, &alpha);
-    kcode2 = clSetKernelArg(krnl, 2, sizeof(cl_mem), &opA);
-    kcode3 = clSetKernelArg(krnl, 3, sizeof(cl_uint), &lda);
-    kcode4 = clSetKernelArg(krnl, 4, sizeof(cl_uint), &offsetA);
-    kcode5 = clSetKernelArg(krnl, 5, sizeof(cl_mem), &B);
-    kcode6 = clSetKernelArg(krnl, 6, sizeof(cl_uint), &ldb);
-    kcode7 = clSetKernelArg(krnl, 7, sizeof(cl_uint), &opB);
-    kcode8 = clSetKernelArg(krnl, 8, elemsize, &beta);
-    kcode9 = clSetKernelArg(krnl, 9, sizeof(cl_mem), &C);
-    kcode10 = clSetKernelArg(krnl, 10, sizeof(cl_uint), &ldc);
-    kcode11 = clSetKernelArg(krnl, 11, sizeof(cl_uint), &offsetC);
-    //cout<<kcode0<<" "<<kcode1<<" "<<kcode2<<" "<<kcode3<<" "<<kcode4<<" "<<kcode5<<" "<<kcode6<<" "<<kcode7<<" "<<kcode8<<" "<<kcode9<<" "<<kcode10<<
-    //		" "<<kcode11<<endl;
+
+    kcode[0] = clSetKernelArg(krnl, 0, sizeof(cl_uint), &K);
+    kcode[1] = clSetKernelArg(krnl, 1, elemsize, &alpha);
+
+    kcode[2] = clSetKernelArg(krnl, 2, sizeof(cl_mem), &A);
+    kcode[3] = clSetKernelArg(krnl, 3, sizeof(cl_int), &sa0);
+    kcode[4] = clSetKernelArg(krnl, 4, sizeof(cl_int), &sa1);
+    kcode[5] = clSetKernelArg(krnl, 5, sizeof(cl_uint), &offsetA);
+
+    kcode[6] = clSetKernelArg(krnl, 6, sizeof(cl_mem), &B);
+    kcode[7] = clSetKernelArg(krnl, 7, sizeof(cl_int), &sb0);
+    kcode[8] = clSetKernelArg(krnl, 8, sizeof(cl_int), &sb1);
+    kcode[9] = clSetKernelArg(krnl, 9, sizeof(cl_uint), &offsetB);
+
+    kcode[10] = clSetKernelArg(krnl, 10, elemsize, &beta);
+    kcode[11] = clSetKernelArg(krnl, 11, sizeof(cl_mem), &C);
+    kcode[12] = clSetKernelArg(krnl, 12, sizeof(cl_uint), &ldc);
+    kcode[13] = clSetKernelArg(krnl, 13, sizeof(cl_uint), &offsetC);
+
+    //for(int i=0;i<14;i++) std::cout<<kcode[i]<<" ";
+    //std::cout<<std::endl;
+
     size_t gsize[2], lsize[2];
     gsize[1] = M;
     gsize[0] = N ;
     cl_event evt;
     cl_int errcode = clEnqueueNDRangeKernel(q, krnl, 2, NULL, gsize, NULL, 0, NULL, &evt);
+    //clFinish(q);
     //cout<<"Was CL_SUCCESS? "<<(errcode==CL_SUCCESS)<<" "<<errcode<<endl;
     return evt;
 }
@@ -991,20 +1029,64 @@ cl_event RaijinGemm<T>::apply(cl_command_queue q,RaijinCleaner **cleaner,enum RA
     if(K>optK){
         //cout<<"Remaining K"<<endl;
         int remK = K - optK;
-        lastEvt = applyGen(q,*cleaner,order,transA,transB,optM,optN,remK,alpha,A,lda, offsetA+optK, B,ldb,offsetB+optK*ldb, beta, C,ldc,offsetC);
+        cl_uint newOffsetA,newOffsetB;
+        if(!transA) newOffsetA = offsetA + optK;
+        else newOffsetA = offsetA+optM*lda;
+
+        if(!transB) newOffsetB = offsetB + optN*ldb;
+        else newOffsetB = offsetB + optK;
+        lastEvt = applyGen(q,
+                           *cleaner,
+                           order,
+                           transA,
+                           transB,
+                           optM,
+                           optN,
+                           remK,
+                           alpha,
+                           A,
+                           lda,
+                           newOffsetA,
+                           B,
+                           ldb,
+                           newOffsetB,
+                           raijinGetOne<T>(),
+                           C,
+                           ldc,
+                           offsetC);
     }
 
     //Calculate the (M-optM) remaining rows of C
     if(M>optM){
         //cout<<"Remaining M"<<endl;
         int remM = M- optM;
-        lastEvt = applyGen(q,*cleaner,order,transA,transB,remM,N,K,alpha, A,lda, offsetA+optM*lda, B,ldb,offsetB, beta, C,ldc,offsetC+optM*ldc);
+        int offa = transA ? (offsetA + optM) : (offsetA + optM*lda);
+        lastEvt = applyGen(q,
+                           *cleaner,
+                           order,
+                           transA,
+                           transB,
+                           remM,
+                           N,
+                           K,
+                           alpha,
+                           A,
+                           lda,
+                           offa,
+                           B,
+                           ldb,
+                           offsetB,
+                           beta,
+                           C,
+                           ldc,
+                           offsetC+optM*ldc);
     }
 
     if(N>optN){
         //cout<<"Remaining N"<<endl;
         int remN = N- optN;
-        lastEvt = applyGen(q,*cleaner,order,transA,transB, M,remN,K,alpha, A,lda, offsetA, B,ldb,offsetB+optN, beta, C,ldc,offsetC+optN);
+        int offb = transB ? (offsetB + optN*ldb) : (offsetB + optN);
+        lastEvt = applyGen(q,*cleaner,order,transA,transB, M,remN,K,alpha, A,lda, offsetA, B,ldb,offb, beta, C,ldc,offsetC+optN);
     }
     return lastEvt;
 }
